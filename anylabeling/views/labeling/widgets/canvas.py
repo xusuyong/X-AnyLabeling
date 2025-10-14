@@ -1608,13 +1608,13 @@ class Canvas(
                         continue
                     rect = QtCore.QRect(
                         int(bbox.x()),
-                        int(bbox.y()),
+                        int(bbox.y() - rect_height - 1),
                         rect_width,
                         rect_height,
                     )
                     text_pos = QtCore.QPoint(
                         int(bbox.x() + padding_x),
-                        int(bbox.y() + rect_height - padding_y - fm.descent()),
+                        int(bbox.y() - 1 - padding_y - fm.descent()),
                     )
                 elif shape.shape_type == "circle":
                     points = shape.points
