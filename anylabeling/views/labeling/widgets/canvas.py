@@ -2608,7 +2608,7 @@ class Canvas(
         if self.show_labels:
             p.setFont(
                 QtGui.QFont(
-                    "Arial", int(max(6.0, int(round(8.0 / Shape.scale))))
+                    "Arial", int(max(5.0, int(round(6.0 / Shape.scale))))
                 )
             )
             labels = []
@@ -2641,8 +2641,8 @@ class Canvas(
                     continue
                 fm = QtGui.QFontMetrics(p.font())
                 text_rect = fm.tightBoundingRect(label_text)
-                padding_x = 4
-                padding_y = 2
+                padding_x = 1
+                padding_y = 0
                 rect_width = text_rect.width() + 2 * padding_x
                 rect_height = fm.height() + 2 * padding_y
 
@@ -2659,13 +2659,13 @@ class Canvas(
                         continue
                     rect = QtCore.QRect(
                         int(bbox.x()),
-                        int(bbox.y()),
+                        int(bbox.y() - rect_height),
                         rect_width,
                         rect_height,
                     )
                     text_pos = QtCore.QPoint(
                         int(bbox.x() + padding_x),
-                        int(bbox.y() + rect_height - padding_y - fm.descent()),
+                        int(bbox.y() - padding_y - fm.descent()),
                     )
                 elif shape.shape_type == "circle":
                     points = shape.points
@@ -2721,7 +2721,9 @@ class Canvas(
             for shape, rect, _, _ in labels:
                 if not shape.visible:
                     continue
-                p.fillRect(rect, shape.line_color)
+                color = QtGui.QColor(shape.line_color)
+                color.setAlpha(100)  # 设置透明度 (0=完全透明, 255=不透明)
+                p.fillRect(rect, color)
 
             pen = QtGui.QPen(QtGui.QColor("#000000"), 8, Qt.PenStyle.SolidLine)
             p.setPen(pen)
