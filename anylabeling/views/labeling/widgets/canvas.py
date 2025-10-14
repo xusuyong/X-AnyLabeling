@@ -4403,8 +4403,8 @@ class Canvas(
                     continue
                 fm = QtGui.QFontMetrics(p.font())
                 text_rect = fm.tightBoundingRect(label_text)
-                padding_x = 4
-                padding_y = 2
+                padding_x = 1
+                padding_y = 0
                 rect_width = text_rect.width() + 2 * padding_x
                 rect_height = fm.height() + 2 * padding_y
 
@@ -4422,14 +4422,14 @@ class Canvas(
                     point = label_transform.map(bbox.topLeft())
                     rect = QtCore.QRect(
                         int(point.x()),
-                        int(point.y()),
+                        int(point.y() - rect_height),
                         rect_width,
                         rect_height,
                     )
                     text_pos = QtCore.QPoint(
                         int(point.x() + padding_x),
                         int(
-                            point.y() + rect_height - padding_y - fm.descent()
+                            point.y() - padding_y - fm.descent()
                         ),
                     )
                 elif shape.shape_type == "circle":
@@ -4486,7 +4486,9 @@ class Canvas(
             for shape, rect, _, _ in labels:
                 if not shape.visible:
                     continue
-                p.fillRect(rect, shape.line_color)
+                color = QtGui.QColor(shape.line_color)
+                color.setAlpha(128)  # 设置透明度 (0=完全透明, 255=不透明)
+                p.fillRect(rect, color)
 
             pen = QtGui.QPen(QtGui.QColor("#000000"), 8, Qt.PenStyle.SolidLine)
             p.setPen(pen)
