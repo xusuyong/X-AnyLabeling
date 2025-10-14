@@ -4680,8 +4680,8 @@ class Canvas(
                     continue
                 fm = QtGui.QFontMetrics(p.font())
                 text_rect = fm.tightBoundingRect(label_text)
-                padding_x = 4
-                padding_y = 2
+                padding_x = 1
+                padding_y = 0
                 rect_width = text_rect.width() + 2 * padding_x
                 rect_height = fm.height() + 2 * padding_y
                 label_rotation = None
@@ -4804,7 +4804,9 @@ class Canvas(
                 if label_rotation is not None:
                     p.translate(label_rotation[0])
                     p.rotate(label_rotation[1])
-                p.setBrush(shape.line_color)
+                color = QtGui.QColor(shape.line_color)
+                color.setAlpha(128)  # 设置透明度 (0=完全透明, 255=不透明)
+                p.setBrush(color)
                 p.drawRoundedRect(QtCore.QRectF(rect), 4.0, 4.0)
                 if shape.shape_type in ("rectangle", "rotation"):
                     p.fillRect(

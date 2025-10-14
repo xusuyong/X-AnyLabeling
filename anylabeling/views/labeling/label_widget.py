@@ -5647,7 +5647,7 @@ class LabelingWidget(LabelDialog):
             "hvertex_fill_color": (255, 255, 255, 255),
             "fill_color": (r, g, b, 128),
             "select_line_color": (255, 255, 255, 255),
-            "select_fill_color": (r, g, b, 155),
+            "select_fill_color": (r, g, b, 30),
         }
         for key, color in colors.items():
             if shape_config[key] != defaults[key]:
