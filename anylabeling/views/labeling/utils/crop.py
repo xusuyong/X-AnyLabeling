@@ -199,7 +199,7 @@ def process_single_image(args):
 
             # === 在裁剪图像上画框（相对坐标） ===
             shifted_points = points - [xmin, ymin]  # 把点移动到裁剪区域坐标系
-            cv2.polylines(cropped_image, [shifted_points], isClosed=True, color=(0, 255, 0), thickness=1)
+            cv2.polylines(cropped_image, [shifted_points], isClosed=True, color=(0, 255, 0), thickness=2)
 
             dst_path = Path(save_path) / label
             dst_path.mkdir(parents=True, exist_ok=True)
