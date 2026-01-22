@@ -247,6 +247,11 @@ class LabelingWidget(LabelDialog):
         self.unique_label_list.setStyleSheet(
             "QListWidget::item { padding: 0; }"
         )
+        # --- 修改部分开始 ---
+        # 1. 创建搜索栏和按钮的容器布局
+        search_container_layout = QtWidgets.QHBoxLayout()
+        search_container_layout.setContentsMargins(0, 0, 0, 0)
+        search_container_layout.setSpacing(2)
 
         self.file_search = SearchBar()
         self.file_search.setPlaceholderText(self.tr("Search files..."))
@@ -264,6 +269,21 @@ class LabelingWidget(LabelDialog):
         )
         self.file_search.returnPressed.connect(self.file_search_changed)
         self.file_search.returnPressed.connect(self.file_search.setFocus)
+        # 2. 创建过滤按钮
+        self.filter_label_btn = QtWidgets.QPushButton()
+        self.filter_label_btn.setIcon(utils.new_icon("lightning", ext="svg")) # 确保utils有filter图标，或用 self.tr("L")
+        self.filter_label_btn.setToolTip(self.tr("Filter by label category"))
+        self.filter_label_btn.setFixedWidth(30) # 设置固定宽度使其看起来更像功能按钮
+        self.filter_label_btn.clicked.connect(self.show_label_filter_menu)
+
+        # 3. 将搜索框和按钮加入水平布局
+        search_container_layout.addWidget(self.file_search)
+        search_container_layout.addWidget(self.filter_label_btn)
+        
+        search_container_widget = QtWidgets.QWidget()
+        search_container_widget.setLayout(search_container_layout)
+        # --- 修改部分结束 ---
+
         self.file_list_widget = QtWidgets.QListWidget()
         self.file_list_widget.itemSelectionChanged.connect(
             self.file_selection_changed
@@ -2186,7 +2206,7 @@ class LabelingWidget(LabelDialog):
         objects_panel_layout.addWidget(self.shape_dock)
         right_sidebar_layout.addWidget(objects_panel)
 
-        right_sidebar_layout.addWidget(self.file_search)
+        right_sidebar_layout.addWidget(search_container_widget)
 
         files_panel = QFrame()
         files_panel.setObjectName("sidebarPanel")
@@ -6205,3 +6225,45 @@ class LabelingWidget(LabelDialog):
             self.label_dock.widget().setVisible(False)
             self.label_dock.setMinimumHeight(2)
             self.label_dock.setMaximumHeight(2)
+
+    def show_label_filter_menu(self):
+        """显示整个项目的标签过滤菜单"""
+        menu = QtWidgets.QMenu(self)
+        
+        label_names = set()
+        
+        # 方法1: 从 unique_label_list 获取当前已加载的标签
+        if hasattr(self, 'unique_label_list') and self.unique_label_list:
+            for i in range(self.unique_label_list.count()):
+                item = self.unique_label_list.item(i)
+                if item:
+                    label = item.data(Qt.UserRole)
+                    if label:
+                        label_names.add(label)
+
+        # 1. 添加"清除过滤"选项
+        clear_action = menu.addAction(self.tr("Clear Filter"))
+        clear_action.triggered.connect(lambda: self.apply_label_filter(""))
+        menu.addSeparator()
+
+        if not label_names:
+            no_label_action = menu.addAction(self.tr("No project labels defined"))
+            no_label_action.setEnabled(False)
+        else:
+            # 2. 排序并生成菜单
+            for name in sorted(label_names):
+                action = menu.addAction(name)
+                action.triggered.connect(lambda checked, ln=name: self.apply_label_filter(ln))
+
+        # 在按钮下方弹出
+        menu.exec_(self.filter_label_btn.mapToGlobal(QtCore.QPoint(0, self.filter_label_btn.height())))
+
+    def apply_label_filter(self, label_name):
+        """将选中的标签填入搜索框并触发 file_search.py 逻辑"""
+        if label_name:
+            self.file_search.setText(f"label::{label_name}")
+        else:
+            self.file_search.setText("")
+        
+        # 立即执行搜索
+        self.file_search_changed()
