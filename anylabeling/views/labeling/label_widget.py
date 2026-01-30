@@ -288,6 +288,18 @@ class LabelingWidget(LabelDialog):
         self.file_list_widget.itemSelectionChanged.connect(
             self.file_selection_changed
         )
+        # File list context menu: copy image and copy path
+        self.file_list_menu = QtWidgets.QMenu(self)
+        copy_image_action = QtWidgets.QAction(self.tr("Copy Image"), self)
+        copy_image_action.triggered.connect(self.copy_selected_file_image)
+        copy_path_action = QtWidgets.QAction(self.tr("Copy Path"), self)
+        copy_path_action.triggered.connect(self.copy_selected_file_path)
+        self.file_list_menu.addAction(copy_image_action)
+        self.file_list_menu.addAction(copy_path_action)
+        self.file_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.file_list_widget.customContextMenuRequested.connect(
+            self.pop_file_list_menu
+        )
         file_list_layout = QtWidgets.QVBoxLayout()
         file_list_layout.setContentsMargins(0, 0, 0, 0)
         file_list_layout.setSpacing(0)
@@ -3251,6 +3263,38 @@ class LabelingWidget(LabelDialog):
 
     def pop_label_list_menu(self, point):
         self.menus.label_list.exec(self.label_list.mapToGlobal(point))
+
+    def pop_file_list_menu(self, point):
+        """Show context menu for the file list."""
+        try:
+            self.file_list_menu.exec_(self.file_list_widget.mapToGlobal(point))
+        except Exception:
+            pass
+
+    def copy_selected_file_path(self):
+        """Copy the selected file's path to the clipboard."""
+        items = self.file_list_widget.selectedItems()
+        if not items:
+            return
+        path = str(items[0].text())
+        QtWidgets.QApplication.clipboard().setText(path)
+        self.status(self.tr("Path copied to clipboard"))
+
+    def copy_selected_file_image(self):
+        """Copy the selected image to the system clipboard as an image."""
+        items = self.file_list_widget.selectedItems()
+        if not items:
+            return
+        path = str(items[0].text())
+        if not osp.exists(path):
+            self.error_message(self.tr("Error"), self.tr("File not found"))
+            return
+        pix = QtGui.QPixmap(path)
+        if pix.isNull():
+            self.error_message(self.tr("Error"), self.tr("Unable to load image"))
+            return
+        QtWidgets.QApplication.clipboard().setPixmap(pix)
+        self.status(self.tr("Image copied to clipboard"))
 
     def validate_label(self, label):
         # no validation
