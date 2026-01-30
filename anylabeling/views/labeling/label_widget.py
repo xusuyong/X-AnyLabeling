@@ -6244,11 +6244,18 @@ class LabelingWidget(LabelDialog):
         # 1. 添加"清除过滤"选项
         clear_action = menu.addAction(self.tr("Clear Filter"))
         clear_action.triggered.connect(lambda: self.apply_label_filter(""))
+
+        # 固定选项: 筛选有标签或没有标签的图片
+        has_label_action = menu.addAction(self.tr("Has Label"))
+        has_label_action.triggered.connect(lambda: self.apply_label_filter("shape::1"))
+        no_label_action_fixed = menu.addAction(self.tr("No Label"))
+        no_label_action_fixed.triggered.connect(lambda: self.apply_label_filter("shape::0"))
+
         menu.addSeparator()
 
         if not label_names:
-            no_label_action = menu.addAction(self.tr("No project labels defined"))
-            no_label_action.setEnabled(False)
+            no_proj_labels_action = menu.addAction(self.tr("No project labels defined"))
+            no_proj_labels_action.setEnabled(False)
         else:
             # 2. 排序并生成菜单
             for name in sorted(label_names):
@@ -6260,10 +6267,15 @@ class LabelingWidget(LabelDialog):
 
     def apply_label_filter(self, label_name):
         """将选中的标签填入搜索框并触发 file_search.py 逻辑"""
-        if label_name:
-            self.file_search.setText(f"label::{label_name}")
-        else:
+        # 如果是空字符串则清空搜索框
+        if not label_name:
             self.file_search.setText("")
-        
+        else:
+            # 如果已经是一个完整查询（例如 shape::1），直接设置；否则按原来逻辑加上 label:: 前缀
+            if "::" in label_name:
+                self.file_search.setText(label_name)
+            else:
+                self.file_search.setText(f"label::{label_name}")
+
         # 立即执行搜索
         self.file_search_changed()
