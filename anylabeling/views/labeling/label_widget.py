@@ -290,16 +290,16 @@ class LabelingWidget(LabelDialog):
         )
         # File list context menu: copy image and copy path
         self.file_list_menu = QtWidgets.QMenu(self)
-        copy_image_action = QtWidgets.QAction(self.tr("Copy Image"), self)
+        copy_image_action = QtGui.QAction(self.tr("Copy Image"), self)
         copy_image_action.triggered.connect(self.copy_selected_file_image)
-        copy_path_action = QtWidgets.QAction(self.tr("Copy Path"), self)
+        copy_path_action = QtGui.QAction(self.tr("Copy Path"), self)
         copy_path_action.triggered.connect(self.copy_selected_file_path)
-        show_in_explorer_action = QtWidgets.QAction(self.tr("Show in Explorer"), self)
+        show_in_explorer_action = QtGui.QAction(self.tr("Show in Explorer"), self)
         show_in_explorer_action.triggered.connect(self.show_selected_file_in_explorer)
         self.file_list_menu.addAction(copy_image_action)
         self.file_list_menu.addAction(copy_path_action)
         self.file_list_menu.addAction(show_in_explorer_action)
-        self.file_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.file_list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_list_widget.customContextMenuRequested.connect(
             self.pop_file_list_menu
         )
@@ -3269,10 +3269,8 @@ class LabelingWidget(LabelDialog):
 
     def pop_file_list_menu(self, point):
         """Show context menu for the file list."""
-        try:
-            self.file_list_menu.exec_(self.file_list_widget.mapToGlobal(point))
-        except Exception:
-            pass
+        # PyQt6: QMenu.exec_ was removed; use exec instead.
+        self.file_list_menu.exec(self.file_list_widget.mapToGlobal(point))
 
     def copy_selected_file_path(self):
         """Copy the selected file's path to the clipboard."""
@@ -6328,7 +6326,7 @@ class LabelingWidget(LabelDialog):
             for i in range(self.unique_label_list.count()):
                 item = self.unique_label_list.item(i)
                 if item:
-                    label = item.data(Qt.UserRole)
+                    label = item.data(Qt.ItemDataRole.UserRole)
                     if label:
                         label_names.add(label)
 
@@ -6354,7 +6352,7 @@ class LabelingWidget(LabelDialog):
                 action.triggered.connect(lambda checked, ln=name: self.apply_label_filter(ln))
 
         # 在按钮下方弹出
-        menu.exec_(self.filter_label_btn.mapToGlobal(QtCore.QPoint(0, self.filter_label_btn.height())))
+        menu.exec(self.filter_label_btn.mapToGlobal(QtCore.QPoint(0, self.filter_label_btn.height())))
 
     def apply_label_filter(self, label_name):
         """将选中的标签填入搜索框并触发 file_search.py 逻辑"""
