@@ -34,7 +34,6 @@ from PyQt6.QtWidgets import (
 
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import _THUMBNAIL_RENDER_MODELS
-from anylabeling.views.training import UltralyticsDialog
 
 from ...app_info import (
     __appname__,
@@ -282,6 +281,15 @@ class LabelingWidget(LabelDialog):
         )
         self.file_search.returnPressed.connect(self.file_search_changed)
         self.file_search.returnPressed.connect(self.file_search.setFocus)
+        # 创建过滤按钮
+        self.filter_label_btn = QPushButton(self)
+        self.filter_label_btn.setFixedSize(32, 32) # 设置固定宽度使其看起来更像功能按钮
+        self.filter_label_btn.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor
+        )
+        self.filter_label_btn.setToolTip(self.tr("Filter by label category"))
+        self.filter_label_btn.setIcon(utils.new_icon("lightning", ext="svg")) # 确保utils有filter图标，或用 self.tr("L")
+        self.filter_label_btn.clicked.connect(self.show_label_filter_menu)
         self.settings_button = QPushButton(self)
         self.settings_button.setFixedSize(32, 32)
         self.settings_button.setCursor(
@@ -295,6 +303,21 @@ class LabelingWidget(LabelDialog):
         self.file_list_widget = QtWidgets.QListWidget()
         self.file_list_widget.itemSelectionChanged.connect(
             self.file_selection_changed
+        )
+        # File list context menu: copy image and copy path
+        self.file_list_menu = QtWidgets.QMenu(self)
+        copy_image_action = QtGui.QAction(self.tr("Copy Image"), self)
+        copy_image_action.triggered.connect(self.copy_selected_file_image)
+        copy_path_action = QtGui.QAction(self.tr("Copy Path"), self)
+        copy_path_action.triggered.connect(self.copy_selected_file_path)
+        show_in_explorer_action = QtGui.QAction(self.tr("Show in Explorer"), self)
+        show_in_explorer_action.triggered.connect(self.show_selected_file_in_explorer)
+        self.file_list_menu.addAction(copy_image_action)
+        self.file_list_menu.addAction(copy_path_action)
+        self.file_list_menu.addAction(show_in_explorer_action)
+        self.file_list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.file_list_widget.customContextMenuRequested.connect(
+            self.pop_file_list_menu
         )
         file_list_layout = QtWidgets.QVBoxLayout()
         file_list_layout.setContentsMargins(0, 0, 0, 0)
@@ -2300,6 +2323,7 @@ class LabelingWidget(LabelDialog):
         file_search_row_layout.setSpacing(6)
         file_search_row_layout.addWidget(self.file_search, 1)
         file_search_row_layout.addWidget(self.settings_button, 0)
+        file_search_row_layout.addWidget(self.filter_label_btn, 0)
         right_sidebar_layout.addLayout(file_search_row_layout)
 
         files_panel = QFrame()
@@ -2996,6 +3020,8 @@ class LabelingWidget(LabelDialog):
 
     # Trainer
     def start_training(self, mode):
+        from anylabeling.views.training import UltralyticsDialog
+
         if mode == "ultralytics":
             dialog = UltralyticsDialog(self)
         else:
@@ -3417,6 +3443,80 @@ class LabelingWidget(LabelDialog):
                 )
             self.gid_filter_combobox.gid_box.setCurrentIndex(index)
             del blocker
+
+    def pop_file_list_menu(self, point):
+        """Show context menu for the file list."""
+        # PyQt6: QMenu.exec_ was removed; use exec instead.
+        self.file_list_menu.exec(self.file_list_widget.mapToGlobal(point))
+
+    def copy_selected_file_path(self):
+        """Copy the selected file's path to the clipboard."""
+        items = self.file_list_widget.selectedItems()
+        if not items:
+            return
+        path = str(items[0].text())
+        QtWidgets.QApplication.clipboard().setText(path)
+        self.status(self.tr("Path copied to clipboard"))
+
+    def copy_selected_file_image(self):
+        """Copy the selected image to the system clipboard as an image."""
+        items = self.file_list_widget.selectedItems()
+        if not items:
+            return
+        path = str(items[0].text())
+        if not osp.exists(path):
+            self.error_message(self.tr("Error"), self.tr("File not found"))
+            return
+        pix = QtGui.QPixmap(path)
+        if pix.isNull():
+            self.error_message(self.tr("Error"), self.tr("Unable to load image"))
+            return
+        QtWidgets.QApplication.clipboard().setPixmap(pix)
+        self.status(self.tr("Image copied to clipboard"))
+
+    def show_selected_file_in_explorer(self):
+        """Show the selected file in the system file explorer."""
+        import platform
+        import subprocess
+        
+        items = self.file_list_widget.selectedItems()
+        if not items:
+            return
+        path = str(items[0].text())
+        if not osp.exists(path):
+            self.error_message(self.tr("Error"), self.tr("File not found"))
+            return
+        
+        # Convert to absolute path
+        abs_path = osp.abspath(path)
+        
+        try:
+            system = platform.system()
+            if system == "Windows":
+                # Windows: use explorer with /select parameter
+                subprocess.run(["explorer", "/select,", abs_path])
+            elif system == "Darwin":
+                # macOS: use open with -R parameter
+                subprocess.run(["open", "-R", abs_path])
+            else:
+                # Linux: try different file managers
+                # First try to open the parent directory
+                parent_dir = osp.dirname(abs_path)
+                file_managers = [
+                    ["xdg-open", parent_dir],
+                    ["nautilus", parent_dir],
+                    ["dolphin", "--select", abs_path],
+                    ["thunar", parent_dir],
+                ]
+                for cmd in file_managers:
+                    try:
+                        subprocess.run(cmd, check=True)
+                        break
+                    except (subprocess.CalledProcessError, FileNotFoundError):
+                        continue
+            self.status(self.tr("File location opened"))
+        except Exception as e:
+            self.error_message(self.tr("Error"), self.tr(f"Failed to open file location: {str(e)}"))
 
     def validate_label(self, label):
         # no validation
@@ -6437,3 +6537,57 @@ class LabelingWidget(LabelDialog):
 
     def toggle_shapes_visibility(self, checked):
         self.shape_dock.setVisible(checked)
+
+    def show_label_filter_menu(self):
+        """显示整个项目的标签过滤菜单"""
+        menu = QtWidgets.QMenu(self)
+        
+        label_names = set()
+        
+        # 方法1: 从 unique_label_list 获取当前已加载的标签
+        if hasattr(self, 'unique_label_list') and self.unique_label_list:
+            for i in range(self.unique_label_list.count()):
+                item = self.unique_label_list.item(i)
+                if item:
+                    label = item.data(Qt.ItemDataRole.UserRole)
+                    if label:
+                        label_names.add(label)
+
+        # 1. 添加"清除过滤"选项
+        clear_action = menu.addAction(self.tr("Clear Filter"))
+        clear_action.triggered.connect(lambda: self.apply_label_filter(""))
+
+        # 固定选项: 筛选有标签或没有标签的图片
+        has_label_action = menu.addAction(self.tr("Has Label"))
+        has_label_action.triggered.connect(lambda: self.apply_label_filter("shape::1"))
+        no_label_action_fixed = menu.addAction(self.tr("No Label"))
+        no_label_action_fixed.triggered.connect(lambda: self.apply_label_filter("shape::0"))
+
+        menu.addSeparator()
+
+        if not label_names:
+            no_proj_labels_action = menu.addAction(self.tr("No project labels defined"))
+            no_proj_labels_action.setEnabled(False)
+        else:
+            # 2. 排序并生成菜单
+            for name in sorted(label_names):
+                action = menu.addAction(name)
+                action.triggered.connect(lambda checked, ln=name: self.apply_label_filter(ln))
+
+        # 在按钮下方弹出
+        menu.exec(self.filter_label_btn.mapToGlobal(QtCore.QPoint(0, self.filter_label_btn.height())))
+
+    def apply_label_filter(self, label_name):
+        """将选中的标签填入搜索框并触发 file_search.py 逻辑"""
+        # 如果是空字符串则清空搜索框
+        if not label_name:
+            self.file_search.setText("")
+        else:
+            # 如果已经是一个完整查询（例如 shape::1），直接设置；否则按原来逻辑加上 label:: 前缀
+            if "::" in label_name:
+                self.file_search.setText(label_name)
+            else:
+                self.file_search.setText(f"label::{label_name}")
+
+        # 立即执行搜索
+        self.file_search_changed()
