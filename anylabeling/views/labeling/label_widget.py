@@ -3776,11 +3776,14 @@ class LabelingWidget(LabelDialog):
         copy_path_action = menu.addAction(
             utils.new_icon("copy", "svg"), self.tr("Copy File Path")
         )
+        show_in_explorer_action = menu.addAction(self.tr("Show in File Explorer"))
         action = menu.exec(self.file_list_widget.mapToGlobal(point))
         if action == copy_name_action:
             self.copy_file_path(osp.basename(item.text()))
         elif action == copy_path_action:
             self.copy_file_path(item.text())
+        elif action == show_in_explorer_action:
+            self.show_selected_file_in_explorer()
 
     def copy_file_path(self, file_path):
         popup = Popup(
@@ -3789,6 +3792,50 @@ class LabelingWidget(LabelDialog):
             icon=new_icon_path("copy-green", "svg"),
         )
         popup.show_popup(self, copy_msg=file_path, position="default")
+
+    def show_selected_file_in_explorer(self):
+        """Show the selected file in the system file explorer."""
+        import platform
+        import subprocess
+
+        items = self.file_list_widget.selectedItems()
+        if not items:
+            return
+        path = str(items[0].text())
+        if not osp.exists(path):
+            self.error_message(self.tr("Error"), self.tr("File not found"))
+            return
+
+        # Convert to absolute path
+        abs_path = osp.abspath(path)
+
+        try:
+            system = platform.system()
+            if system == "Windows":
+                # Windows: use explorer with /select parameter
+                subprocess.run(["explorer", "/select,", abs_path])
+            elif system == "Darwin":
+                # macOS: use open with -R parameter
+                subprocess.run(["open", "-R", abs_path])
+            else:
+                # Linux: try different file managers
+                # First try to open the parent directory
+                parent_dir = osp.dirname(abs_path)
+                file_managers = [
+                    ["xdg-open", parent_dir],
+                    ["nautilus", parent_dir],
+                    ["dolphin", "--select", abs_path],
+                    ["thunar", parent_dir],
+                ]
+                for cmd in file_managers:
+                    try:
+                        subprocess.run(cmd, check=True)
+                        break
+                    except (subprocess.CalledProcessError, FileNotFoundError):
+                        continue
+            self.status(self.tr("File location opened"))
+        except Exception as e:
+            self.error_message(self.tr("Error"), self.tr(f"Failed to open file location: {str(e)}"))
 
     def _label_file_checked(self, label_file):
         if not QtCore.QFile.exists(label_file):
