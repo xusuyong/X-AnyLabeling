@@ -391,6 +391,14 @@ class LabelingWidget(LabelDialog):
         )
         self.file_search.returnPressed.connect(self.file_search_changed)
         self.file_search.returnPressed.connect(self.file_search.setFocus)
+        # 创建过滤按钮
+        self.filter_label_btn = QtWidgets.QPushButton(
+            icon=utils.new_icon("search", "svg"),
+            toolTip=self.tr("Filter by label category"),
+            cursor=QtCore.Qt.CursorShape.PointingHandCursor,
+            clicked=self.show_label_filter_menu,
+        )
+        self.filter_label_btn.setFixedSize(32, 32)
         self.settings_button = QtWidgets.QToolButton(self)
         self.settings_button.setFixedSize(26, 26)
         self.settings_button.setCursor(
@@ -2863,7 +2871,17 @@ class LabelingWidget(LabelDialog):
         file_search_layout.addStretch()
         file_search_layout.addWidget(self.files_checkbox)
         HoverControl(files_panel, self.files_checkbox)
-        files_panel_layout.addWidget(self.file_search)
+
+        self.filter_label_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {theme['surface']}; border: none; border-bottom: 1px solid {theme['border']}; border-radius: 0; }}"
+            f"QPushButton:hover {{ background-color: {theme['surface_hover']}; }}"
+        )
+        file_search_row = QHBoxLayout()
+        file_search_row.setContentsMargins(0, 0, 0, 0)
+        file_search_row.setSpacing(0)
+        file_search_row.addWidget(self.file_search, 1)
+        file_search_row.addWidget(self.filter_label_btn)
+        files_panel_layout.addLayout(file_search_row)
         files_panel_layout.addWidget(self.file_dock)
         right_sidebar_layout.addWidget(files_panel)
         for area in (
@@ -8119,3 +8137,30 @@ class LabelingWidget(LabelDialog):
 
     def toggle_shapes_visibility(self, checked):
         self.shape_dock.setVisible(checked)
+
+    def show_label_filter_menu(self):
+        menu = QtWidgets.QMenu(self)
+        for text, q in [
+            (self.tr("Clear Filter"), ""),
+            (self.tr("Has Label"), "shape::1"),
+            (self.tr("No Label"), "shape::0"),
+        ]:
+            menu.addAction(text, lambda checked=False, q=q: self.apply_label_filter(q))
+        menu.addSeparator()
+
+        labels = sorted({
+            item.data(Qt.ItemDataRole.UserRole)
+            for i in range(self.unique_label_list.count())
+            if (item := self.unique_label_list.item(i)) and item.data(Qt.ItemDataRole.UserRole)
+        })
+        if not labels:
+            menu.addAction(self.tr("No project labels defined")).setEnabled(False)
+        for name in labels:
+            menu.addAction(name, lambda checked=False, n=name: self.apply_label_filter(n))
+        menu.exec(self.filter_label_btn.mapToGlobal(QtCore.QPoint(0, self.filter_label_btn.height())))
+
+    def apply_label_filter(self, query):
+        if query and "::" not in query:
+            query = f"label::{query}"
+        self.file_search.setText(query)
+        self.file_search_changed()
