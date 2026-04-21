@@ -341,6 +341,15 @@ class LabelingWidget(LabelDialog):
         )
         self.file_search.returnPressed.connect(self.file_search_changed)
         self.file_search.returnPressed.connect(self.file_search.setFocus)
+        # 创建过滤按钮
+        self.filter_label_btn = QPushButton(self)
+        self.filter_label_btn.setFixedSize(32, 32) # 设置固定宽度使其看起来更像功能按钮
+        self.filter_label_btn.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor
+        )
+        self.filter_label_btn.setToolTip(self.tr("Filter by label category"))
+        self.filter_label_btn.setIcon(utils.new_icon("search", ext="svg")) # 确保utils有filter图标，或用 self.tr("L")
+        self.filter_label_btn.clicked.connect(self.show_label_filter_menu)
         self.settings_button = QPushButton(self)
         self.settings_button.setFixedSize(32, 32)
         self.settings_button.setCursor(
@@ -2503,6 +2512,7 @@ class LabelingWidget(LabelDialog):
         file_search_row_layout.setSpacing(6)
         file_search_row_layout.addWidget(self.file_search, 1)
         file_search_row_layout.addWidget(self.settings_button, 0)
+        file_search_row_layout.addWidget(self.filter_label_btn, 0)
         right_sidebar_layout.addLayout(file_search_row_layout)
 
         files_panel = QFrame()
@@ -7233,3 +7243,57 @@ class LabelingWidget(LabelDialog):
 
     def toggle_shapes_visibility(self, checked):
         self.shape_dock.setVisible(checked)
+
+    def show_label_filter_menu(self):
+        """显示整个项目的标签过滤菜单"""
+        menu = QtWidgets.QMenu(self)
+        
+        label_names = set()
+        
+        # 方法1: 从 unique_label_list 获取当前已加载的标签
+        if hasattr(self, 'unique_label_list') and self.unique_label_list:
+            for i in range(self.unique_label_list.count()):
+                item = self.unique_label_list.item(i)
+                if item:
+                    label = item.data(Qt.ItemDataRole.UserRole)
+                    if label:
+                        label_names.add(label)
+
+        # 1. 添加"清除过滤"选项
+        clear_action = menu.addAction(self.tr("Clear Filter"))
+        clear_action.triggered.connect(lambda: self.apply_label_filter(""))
+
+        # 固定选项: 筛选有标签或没有标签的图片
+        has_label_action = menu.addAction(self.tr("Has Label"))
+        has_label_action.triggered.connect(lambda: self.apply_label_filter("shape::1"))
+        no_label_action_fixed = menu.addAction(self.tr("No Label"))
+        no_label_action_fixed.triggered.connect(lambda: self.apply_label_filter("shape::0"))
+
+        menu.addSeparator()
+
+        if not label_names:
+            no_proj_labels_action = menu.addAction(self.tr("No project labels defined"))
+            no_proj_labels_action.setEnabled(False)
+        else:
+            # 2. 排序并生成菜单
+            for name in sorted(label_names):
+                action = menu.addAction(name)
+                action.triggered.connect(lambda checked, ln=name: self.apply_label_filter(ln))
+
+        # 在按钮下方弹出
+        menu.exec(self.filter_label_btn.mapToGlobal(QtCore.QPoint(0, self.filter_label_btn.height())))
+
+    def apply_label_filter(self, label_name):
+        """将选中的标签填入搜索框并触发 file_search.py 逻辑"""
+        # 如果是空字符串则清空搜索框
+        if not label_name:
+            self.file_search.setText("")
+        else:
+            # 如果已经是一个完整查询（例如 shape::1），直接设置；否则按原来逻辑加上 label:: 前缀
+            if "::" in label_name:
+                self.file_search.setText(label_name)
+            else:
+                self.file_search.setText(f"label::{label_name}")
+
+        # 立即执行搜索
+        self.file_search_changed()
