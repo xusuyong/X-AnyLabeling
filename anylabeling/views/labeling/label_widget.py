@@ -5956,21 +5956,21 @@ class LabelingWidget(LabelDialog):
                 shutil.move(label_file, label_save_file)
                 logger.info(f"Label file is moved to: {osp.realpath(label_save_file)}")
 
-            filename = None
-            if self.filename is None:
-                filename = self.image_list[0]
-            else:
-                current_index = self.fn_to_index[str(self.filename)]
-                if current_index + 1 < len(self.image_list):
-                    filename = self.image_list[current_index + 1]
-                else:
-                    filename = self.image_list[0]
+            # 确定下一张要加载的文件
+            current_file = str(self.filename)
+            current_index = self.fn_to_index.get(current_file, 0)
+            next_index = current_index if current_index < len(self.image_list) - 1 else 0
+
+            # 改为直接从 QListWidget 中移除对应条目
+            items = self.file_list_widget.findItems(current_file, QtCore.Qt.MatchFlag.MatchExactly)
+            for item in items:
+                self.file_list_widget.takeItem(self.file_list_widget.row(item))
+
+            # 重建索引
+            self.fn_to_index = {str(f): i for i, f in enumerate(self.image_list)}
+            filename = self.image_list[next_index] if self.image_list else None
 
             self.reset_state()
-            if osp.isfile(image_path):
-                image_path = osp.dirname(image_path)
-            self.import_image_folder(image_path)
-
             self.filename = filename
             if self.filename:
                 self.load_file(self.filename)
