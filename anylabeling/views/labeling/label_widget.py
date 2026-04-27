@@ -1,3 +1,4 @@
+import concurrent.futures
 import functools
 import html
 import json
@@ -130,6 +131,68 @@ def _create_file_status_icon(color):
     return QtGui.QIcon(pixmap)
 
 
+def _check_label_file_status(args):
+    """在线程池中运行：返回 (filename, label_file, has_label, is_checked)"""
+    filename, label_file = args
+    has_label = False
+    is_checked = False
+    try:
+        if osp.exists(label_file):
+            # 快速读取头部判断是否为合法 label 文件
+            with open(label_file, "r", encoding="utf-8") as f:
+                buffer = ""
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    if not buffer and ('"version"' in chunk or '"shapes"' in chunk):
+                        has_label = True
+                    buffer = buffer[-32:] + chunk
+                    match = CHECKED_FIELD_PATTERN.search(buffer)
+                    if match:
+                        is_checked = match.group(1) == "true"
+                        break
+    except Exception:
+        pass
+    return filename, label_file, has_label, is_checked
+
+
+class FileStatusScanWorker(QtCore.QThread):
+    """后台线程：并行扫描所有文件的标注状态，完成后通知主线程批量更新 UI。"""
+
+    # 扫描全部完成信号：传回有序结果列表 [(filename, label_file, has_label, is_checked), ...]
+    scan_finished = QtCore.pyqtSignal(list)
+
+    def __init__(self, file_label_pairs, parent=None):
+        super().__init__(parent)
+        # file_label_pairs: list of (filename, label_file)
+        self._pairs = file_label_pairs
+        self._cancelled = False  # ← 加这个
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        results = [None] * len(self._pairs)
+        max_workers = min(16, (os.cpu_count() or 4) * 2)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_idx = {
+                executor.submit(_check_label_file_status, pair): idx
+                for idx, pair in enumerate(self._pairs)
+            }
+            for future in concurrent.futures.as_completed(future_to_idx):
+                if self._cancelled:      # ← 检查取消标志
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return               # 不 emit，主线程忽略这次扫描
+                idx = future_to_idx[future]
+                try:
+                    results[idx] = future.result()
+                except Exception:
+                    filename, label_file = self._pairs[idx]
+                    results[idx] = (filename, label_file, False, False)
+        self.scan_finished.emit(results)
+
+
 class LabelingWidget(LabelDialog):
     """The main widget for labeling images"""
 
@@ -169,6 +232,7 @@ class LabelingWidget(LabelDialog):
         self.fn_to_index = {}
         self.cache_auto_label = None
         self.cache_auto_label_group_id = None
+        self._scan_worker = None  # 后台文件状态扫描线程
 
         # see configs/anylabeling_config.yaml for valid configuration
         if config is None:
@@ -3663,20 +3727,51 @@ class LabelingWidget(LabelDialog):
     def _file_item_annotation_checked(self, item):
         return item.data(Qt.ItemDataRole.UserRole) is True
 
-    def _create_file_list_item(self, file, label_file):
+    def _create_file_list_item(self, file, has_label, is_checked):
+        """从预扫描结果直接创建 item，无磁盘 I/O。"""
         item = QtWidgets.QListWidgetItem(file)
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         if self._config.get("file_list_checkbox_editable", False):
             flags |= Qt.ItemFlag.ItemIsUserCheckable
         item.setFlags(flags)
-        if QtCore.QFile.exists(label_file) and LabelFile.is_label_file(
-            label_file
-        ):
-            item.setCheckState(Qt.CheckState.Checked)
-        else:
-            item.setCheckState(Qt.CheckState.Unchecked)
-        self._set_file_item_checked(item, self._label_file_checked(label_file))
+        item.setCheckState(
+            Qt.CheckState.Checked if has_label else Qt.CheckState.Unchecked
+        )
+        item.setIcon(self.file_status_icons[is_checked])
+        item.setData(Qt.ItemDataRole.UserRole, is_checked)
         return item
+
+    def _on_scan_finished(self, results):
+        """后台扫描完成后，在主线程批量填充文件列表（暂停重绘，一次性插入）。"""
+        self.file_list_widget.setUpdatesEnabled(False)
+        try:
+            items = []
+            for filename, _label_file, has_label, is_checked in results:
+                item = self._create_file_list_item(
+                    filename, has_label, is_checked
+                )
+                items.append(item)
+
+            for idx, item in enumerate(items):
+                self.file_list_widget.addItem(item)
+                self.fn_to_index[item.text()] = idx
+        finally:
+            self.file_list_widget.setUpdatesEnabled(True)
+
+        # 加载第一张图
+        self._post_import_actions(
+            [r[0] for r in results], self._pending_load_after_scan
+        )
+
+    def _post_import_actions(self, image_files, load=True):
+        self.actions.open_next_image.setEnabled(True)
+        self.actions.open_prev_image.setEnabled(True)
+        self.actions.open_next_unchecked_image.setEnabled(True)
+        self.actions.open_prev_unchecked_image.setEnabled(True)
+        self.toggle_actions(True)
+        self.open_next_image(load=load)
+        if image_files and self._config.get("exif_scan_enabled", True):
+            self.async_exif_scanner.start_scan(image_files)
 
     def _current_file_item(self):
         if str(self.filename) not in self.fn_to_index:
@@ -6331,6 +6426,11 @@ class LabelingWidget(LabelDialog):
 
     @property
     def image_list(self):
+        # fn_to_index 保持插入顺序（Python 3.7+ dict 有序），直接返回 key 列表
+        # 比遍历 QListWidget 快一个数量级
+        if self.fn_to_index:
+            return list(self.fn_to_index.keys())
+        # 回退：兼容 fn_to_index 尚未填充的场景
         lst = []
         for i in range(self.file_list_widget.count()):
             item = self.file_list_widget.item(i)
@@ -6341,32 +6441,29 @@ class LabelingWidget(LabelDialog):
         extensions = utils.get_supported_image_extensions()
 
         self.filename = None
-        valid_files = []
+        file_label_pairs = []
         for file in image_files:
             if file in self.image_list or not file.lower().endswith(
                 tuple(extensions)
             ):
                 continue
-            valid_files.append(file)
             label_file = osp.splitext(file)[0] + ".json"
             if self.output_dir:
                 label_file_without_path = osp.basename(label_file)
                 label_file = self.output_dir + "/" + label_file_without_path
-            item = self._create_file_list_item(file, label_file)
-            self.file_list_widget.addItem(item)
-            self.fn_to_index[file] = self.file_list_widget.count() - 1
+            file_label_pairs.append((file, label_file))
 
-        if len(self.image_list) > 1:
-            self.actions.open_next_image.setEnabled(True)
-            self.actions.open_prev_image.setEnabled(True)
-            self.actions.open_next_unchecked_image.setEnabled(True)
-            self.actions.open_prev_unchecked_image.setEnabled(True)
+        if not file_label_pairs:
+            return
 
-        self.toggle_actions(True)
-        self.open_next_image()
+        self._pending_load_after_scan = True
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._scan_worker.cancel()   # ← 优雅取消
+            self._scan_worker.wait()
 
-        if valid_files and self._config.get("exif_scan_enabled", True):
-            self.async_exif_scanner.start_scan(valid_files)
+        self._scan_worker = FileStatusScanWorker(file_label_pairs, self)
+        self._scan_worker.scan_finished.connect(self._on_scan_finished)
+        self._scan_worker.start()
 
     def import_image_folder(self, dirpath, pattern=None, load=True):
         if not self.may_continue() or not dirpath:
@@ -6378,10 +6475,12 @@ class LabelingWidget(LabelDialog):
         self.last_open_dir = dirpath
         self.filename = None
         self.file_list_widget.clear()
-        image_files = []
+        self.fn_to_index = {}
 
         search_pattern = parse_search_pattern(pattern) if pattern else None
 
+        # --- 第一步：收集所有符合条件的文件路径（纯路径操作，速度快）---
+        file_label_pairs = []
         for file_index, filename in enumerate(
             utils.scan_all_images(dirpath), start=1
         ):
@@ -6406,24 +6505,26 @@ class LabelingWidget(LabelDialog):
                         ):
                             continue
 
-            image_files.append(filename)
             label_file = osp.splitext(filename)[0] + ".json"
             if self.output_dir:
                 label_file_without_path = osp.basename(label_file)
                 label_file = self.output_dir + "/" + label_file_without_path
-            item = self._create_file_list_item(filename, label_file)
-            self.file_list_widget.addItem(item)
-            self.fn_to_index[filename] = self.file_list_widget.count() - 1
+            file_label_pairs.append((filename, label_file))
 
-        self.actions.open_next_image.setEnabled(True)
-        self.actions.open_prev_image.setEnabled(True)
-        self.actions.open_next_unchecked_image.setEnabled(True)
-        self.actions.open_prev_unchecked_image.setEnabled(True)
-        self.toggle_actions(True)
-        self.open_next_image(load=load)
+        if not file_label_pairs:
+            self.toggle_actions(True)
+            self.open_next_image(load=load)
+            return
 
-        if image_files and self._config.get("exif_scan_enabled", True):
-            self.async_exif_scanner.start_scan(image_files)
+        # 统一走后台异步扫描：无论文件多少，主线程不阻塞
+        self._pending_load_after_scan = load
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._scan_worker.cancel()   # ← 优雅取消
+            self._scan_worker.wait()
+
+        self._scan_worker = FileStatusScanWorker(file_label_pairs, self)
+        self._scan_worker.scan_finished.connect(self._on_scan_finished)
+        self._scan_worker.start()
 
     def toggle_auto_labeling_widget(self):
         """Toggle auto labeling widget visibility."""
