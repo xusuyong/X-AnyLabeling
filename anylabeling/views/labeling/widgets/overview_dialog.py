@@ -1,7 +1,6 @@
 import os
 import csv
 import json
-import zipfile
 
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import Qt
@@ -436,10 +435,12 @@ class OverviewDialog(QtWidgets.QDialog):
             )
             headers, shape_infos_data = self.get_shape_infos_table(shape_infos)
 
-            label_infos_path = os.path.join(directory, "label_infos.csv")
-            shape_infos_path = os.path.join(directory, "shape_infos.csv")
-            classes_path = os.path.join(directory, "classes.txt")
-            zip_path = os.path.join(directory, "export_data.zip")
+            export_dir = os.path.join(directory, "export_data")
+            os.makedirs(export_dir, exist_ok=True)
+
+            label_infos_path = os.path.join(export_dir, "label_infos.csv")
+            shape_infos_path = os.path.join(export_dir, "shape_infos.csv")
+            classes_path = os.path.join(export_dir, "classes.txt")
 
             # Write label_infos.csv
             with open(
@@ -465,23 +466,12 @@ class OverviewDialog(QtWidgets.QDialog):
             with open(classes_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(classes))
 
-            # Create zip file
-            with zipfile.ZipFile(zip_path, "w") as zf:
-                zf.write(label_infos_path, os.path.basename(label_infos_path))
-                zf.write(shape_infos_path, os.path.basename(shape_infos_path))
-                zf.write(classes_path, os.path.basename(classes_path))
-
-            # Clean up temporary files
-            os.remove(label_infos_path)
-            os.remove(shape_infos_path)
-            os.remove(classes_path)
-
             template = self.tr(
                 "Exporting annotations successfully!\n"
                 "Results have been saved to:\n"
                 "%s"
             )
-            message_text = template % zip_path
+            message_text = template % export_dir
             popup = Popup(
                 message_text,
                 self,
