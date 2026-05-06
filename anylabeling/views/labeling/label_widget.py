@@ -6323,21 +6323,28 @@ class LabelingWidget(LabelDialog):
                 label_save_file = osp.join(save_path, label_name)
                 shutil.move(label_file, label_save_file)
                 logger.info(f"Label file is moved to: {osp.realpath(label_save_file)}")
-            filename = None
-            if self.filename is None:
-                filename = self.image_list[0]
+
+            current_file = str(self.filename)
+            current_index = self.fn_to_index.get(current_file, 0)
+
+            # 先从 widget 和索引里移除
+            items = self.file_list_widget.findItems(current_file, QtCore.Qt.MatchFlag.MatchExactly)
+            for item in items:
+                self.file_list_widget.takeItem(self.file_list_widget.row(item))
+            self.fn_to_index.pop(current_file, None)
+
+            # 重建索引
+            self.fn_to_index = {str(f): i for i, f in enumerate(self.image_list)}
+
+            # 删除后列表缩短了，next_index 要 clamp 一下
+            image_list = self.image_list
+            if image_list:
+                next_index = min(current_index, len(image_list) - 1)
+                filename = image_list[next_index]
             else:
-                current_index = self.fn_to_index[str(self.filename)]
-                if current_index + 1 < len(self.image_list):
-                    filename = self.image_list[current_index + 1]
-                else:
-                    filename = self.image_list[0]
+                filename = None
 
             self.reset_state()
-            if osp.isfile(image_path):
-                image_path = osp.dirname(image_path)
-            self.import_image_folder(image_path)
-
             self.filename = filename
             if self.filename:
                 self.load_file(self.filename)
