@@ -6259,28 +6259,59 @@ class LabelingWidget(LabelDialog):
             )
             return
 
+        # 定义目标文件夹列表
+        move_folders = ["train", "val", "test"]
+
         msg = self.tr(
             "You are about to permanently delete this image file, "
-            "proceed anyway?"
+            "proceed anyway?\n\n"
+            "Or move it to another directory:\n"
+            "  [1] train\n"
+            "  [2] val\n"
+            "  [3] test"
         )
-        answer = mb.warning(
-            self,
-            self.tr("Attention"),
-            msg,
-            mb.StandardButton.Yes | mb.StandardButton.No,
-        )
-        if answer != mb.StandardButton.Yes:
-            return
+
+        # 自定义对话框，支持键盘 1/2/3
+        dialog = QtWidgets.QMessageBox(self)
+        dialog.setWindowTitle(self.tr("Attention"))
+        dialog.setText(msg)
+        dialog.setIcon(mb.Icon.Warning)
+
+        btn_yes = dialog.addButton(self.tr("Yes (Delete)"), mb.ButtonRole.YesRole)
+        btn_no = dialog.addButton(self.tr("No"), mb.ButtonRole.NoRole)
+        btn_folder = [
+            dialog.addButton(f"[{i + 1}] {move_folders[i]}", mb.ButtonRole.ActionRole) for i in range(len(move_folders))
+        ]
+        for i, btn in enumerate(btn_folder):
+            btn.setShortcut(QtGui.QKeySequence(str(i + 1)))
+
+        dialog.exec()
+        clicked = dialog.clickedButton()
+
+        if clicked in btn_folder:
+            target_folder_name = move_folders[btn_folder.index(clicked)]
+        elif clicked == btn_yes:
+            target_folder_name = "_delete_"  # 标记为删除
+        else:
+            return  # 用户取消
 
         image_file = self.get_image_file()
         if osp.exists(image_file):
             image_path, image_name = osp.split(image_file)
-            save_path = osp.join(image_path, "..", "_delete_")
+
+            if target_folder_name == "_delete_":
+                save_path = osp.join(image_path, "..", "_delete_")
+            else:
+                save_path = osp.join(image_path, "..", target_folder_name)
+
             os.makedirs(save_path, exist_ok=True)
+
+            # 移动图片文件
             save_file = osp.join(save_path, image_name)
             shutil.move(image_file, save_file)
             logger.info(f"Image file is moved to: {osp.realpath(save_file)}")
 
+            # 移动标注文件（不再直接删除）
             label_dir_path = osp.dirname(self.filename)
             if self.output_dir:
                 label_dir_path = self.output_dir
@@ -6289,9 +6320,9 @@ class LabelingWidget(LabelDialog):
             if not osp.exists(label_file):
                 label_file = osp.join(osp.dirname(image_file), label_name)
             if osp.exists(label_file):
-                os.remove(label_file)
-                logger.info(f"Label file is removed: {image_file}")
-
+                label_save_file = osp.join(save_path, label_name)
+                shutil.move(label_file, label_save_file)
+                logger.info(f"Label file is moved to: {osp.realpath(label_save_file)}")
             filename = None
             if self.filename is None:
                 filename = self.image_list[0]
