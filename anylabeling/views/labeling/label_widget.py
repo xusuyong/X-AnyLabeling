@@ -35,7 +35,6 @@ from PyQt6.QtWidgets import (
 
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import _THUMBNAIL_RENDER_MODELS
-from anylabeling.views.training import UltralyticsDialog
 
 from ...app_info import (
     __appname__,
@@ -3295,6 +3294,7 @@ class LabelingWidget(LabelDialog):
 
     # Trainer
     def start_training(self, mode):
+        from anylabeling.views.training import UltralyticsDialog
         if mode == "ultralytics":
             dialog = UltralyticsDialog(self)
         else:
