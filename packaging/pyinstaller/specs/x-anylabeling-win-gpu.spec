@@ -167,7 +167,17 @@ a = Analysis(
     ],
     hookspath=[],
     runtime_hooks=[_p('packaging', 'pyinstaller', 'runtime_hooks', 'ort_dll_bootstrap.py')],
-    excludes=[],
+    excludes=[
+        'PyQt5',
+        'PyQt5.QtCore',
+        'PyQt5.QtGui',
+        'PyQt5.QtWidgets',
+        'PyQt5.sip',
+        'PySide6',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
+    ],
 )
 a.binaries = _strip_msvc_runtime_binaries(a.binaries)
 if msvc_runtime_binaries:
@@ -176,19 +186,26 @@ pyz = PYZ(a.pure, a.zipped_data)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+    [],
+    exclude_binaries=True,
     name=f'X-AnyLabeling-v{__version__}-GPU',
     debug=False,
     strip=False,
     upx=False,
-    runtime_tmpdir=None,
     console=False,
     icon=_p('anylabeling', 'resources', 'images', 'icon.icns'),
 )
-app = BUNDLE(
+coll = COLLECT(
     exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    name=f'X-AnyLabeling-v{__version__}-GPU',
+)
+app = BUNDLE(
+    coll,
     name='X-AnyLabeling.app',
     icon=_p('anylabeling', 'resources', 'images', 'icon.icns'),
     bundle_identifier=None,
