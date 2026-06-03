@@ -50,6 +50,7 @@ from .qt import (
     new_icon,
     on_thumbnail_click,
 )
+from .dataset import open_dataset_split
 from .shape import (
     masks_to_bboxes,
     polygons_to_mask,
