@@ -1131,6 +1131,12 @@ class LabelingWidget(LabelDialog):
             icon="convert",
             tip=self.tr("Open shape converter"),
         )
+        dataset_split = action(
+            self.tr("Dataset Split"),
+            lambda: utils.open_dataset_split(self),
+            icon="folder",
+            tip=self.tr("Split dataset into train/val/test sets"),
+        )
         open_chatbot = action(
             self.tr("ChatBot"),
             self.open_chatbot,
@@ -2112,6 +2118,7 @@ class LabelingWidget(LabelDialog):
                 shape_manager,
                 None,
                 shape_converter,
+                dataset_split,
             ),
         )
         utils.add_actions(

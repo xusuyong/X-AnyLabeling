@@ -27,6 +27,7 @@ from .ppocr_dialog import PPOCRDialog
 from .popup import Popup
 from .toolbar import ToolBar
 from .unique_label_qlist_widget import UniqueLabelQListWidget
+from .dataset_split_dialog import DatasetSplitDialog
 from .video_classifier_dialog import VideoClassifierDialog
 from .vqa_dialog import VQADialog
 from .zoom_widget import ZoomWidget
