@@ -37,5 +37,6 @@ except ImportError:
     VideoClassifierDialog = None
 else:
     from .video_classifier_dialog import VideoClassifierDialog
+from .dataset_split_dialog import DatasetSplitDialog
 from .vqa_dialog import VQADialog
 from .zoom_widget import ZoomWidget
