@@ -667,14 +667,46 @@ class AutoLabelingWidget(QWidget):
             # Unload current model first
             self.model_manager.unload_model()
 
-            # Open file dialog to select "config.yaml" file for model
+            # Open file dialog to select config or model file
             file_dialog = QFileDialog(self)
             file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-            file_dialog.setNameFilter("Config file (*.yaml)")
+            file_dialog.setNameFilter(
+                "Supported files (*.yaml *.pt *.torchscript *.onnx *.engine);;"
+                "Config file (*.yaml);;"
+                "Model files (*.pt *.torchscript *.onnx *.engine)"
+            )
 
             if file_dialog.exec():
                 self.hide_labeling_widgets()
-                config_file = file_dialog.selectedFiles()[0]
+                selected_file = file_dialog.selectedFiles()[0]
+                ext = os.path.splitext(selected_file)[1].lower()
+
+                # Auto-generate yaml config if a model file was selected
+                if ext != ".yaml":
+                    config_dir = os.path.dirname(selected_file)
+                    model_basename = os.path.basename(selected_file)
+                    model_stem = os.path.splitext(model_basename)[0]
+                    config_file = os.path.join(
+                        config_dir, f"{model_stem}.yaml"
+                    )
+                    gen_config = {
+                        "type": "yolo_ultralytics",
+                        "name": f"_custom_{model_stem}",
+                        "provider": "Ultralytics",
+                        "display_name": model_basename,
+                        "model_path": selected_file,
+                        "task": "detect",
+                        "conf_threshold": 0.25,
+                        "iou_threshold": 0.45,
+                    }
+                    with open(config_file, "w", encoding="utf-8") as f:
+                        yaml.dump(gen_config, f, allow_unicode=True)
+                    logger.info(
+                        f"Auto-generated config: {config_file}"
+                    )
+                else:
+                    config_file = selected_file
+
                 flag = self.model_manager.load_custom_model(config_file)
                 if not flag:
                     self.model_selection_button.setText("No Model")
