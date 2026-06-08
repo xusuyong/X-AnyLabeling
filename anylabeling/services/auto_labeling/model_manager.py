@@ -423,6 +423,10 @@ def _get_model_class(model_type):  # noqa: C901
         from .u_rtdetr import U_RTDETR
 
         return U_RTDETR
+    elif model_type == "yolo_ultralytics":
+        from .yolo_ultralytics import YOLOUltralytics
+
+        return YOLOUltralytics
     raise ValueError(f"Unknown model type: {model_type}")
 
 
