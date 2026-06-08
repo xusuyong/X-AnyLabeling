@@ -73,6 +73,18 @@ def update_model_selection_scroll_area_height(scroll_area):
         content_layout.setGeometry(content_widget.rect())
 
 
+# Maps each Ultralytics loader menu entry to its YOLO task string.
+# Tasks match ultralytics TASKS = {"detect","segment","classify","pose","obb","semantic"}.
+_ULTRALYTICS_LOADER_TASKS = {
+    "load_ultralytics_detect_model": "detect",
+    "load_ultralytics_segment_model": "segment",
+    "load_ultralytics_semantic_model": "semantic",
+    "load_ultralytics_classify_model": "classify",
+    "load_ultralytics_pose_model": "pose",
+    "load_ultralytics_obb_model": "obb",
+}
+
+
 class AutoLabelingWidget(QWidget):
     new_model_selected = pyqtSignal(str)
     new_custom_model_selected = pyqtSignal(str)
@@ -502,43 +514,97 @@ class AutoLabelingWidget(QWidget):
                     "selected": False,
                     "favorite": False,
                     "display_name": "...Load Custom Model",
-                }
+                },
+                "load_ultralytics_detect_model": {
+                    "selected": False,
+                    "favorite": False,
+                    "display_name": "...Load Ultralytics (Detect)",
+                },
+                "load_ultralytics_segment_model": {
+                    "selected": False,
+                    "favorite": False,
+                    "display_name": "...Load Ultralytics (Segment)",
+                },
+                "load_ultralytics_semantic_model": {
+                    "selected": False,
+                    "favorite": False,
+                    "display_name": "...Load Ultralytics (Semantic)",
+                },
+                "load_ultralytics_classify_model": {
+                    "selected": False,
+                    "favorite": False,
+                    "display_name": "...Load Ultralytics (Classify)",
+                },
+                "load_ultralytics_pose_model": {
+                    "selected": False,
+                    "favorite": False,
+                    "display_name": "...Load Ultralytics (Pose)",
+                },
+                "load_ultralytics_obb_model": {
+                    "selected": False,
+                    "favorite": False,
+                    "display_name": "...Load Ultralytics (OBB)",
+                },
             }
         }
         self.model_info = {
             "load_custom_model": {
                 "display_name": "...Load Custom Model",
                 "config_path": None,
-            }
+            },
+            "load_ultralytics_detect_model": {
+                "display_name": "...Load Ultralytics (Detect)",
+                "config_path": None,
+            },
+            "load_ultralytics_segment_model": {
+                "display_name": "...Load Ultralytics (Segment)",
+                "config_path": None,
+            },
+            "load_ultralytics_semantic_model": {
+                "display_name": "...Load Ultralytics (Semantic)",
+                "config_path": None,
+            },
+            "load_ultralytics_classify_model": {
+                "display_name": "...Load Ultralytics (Classify)",
+                "config_path": None,
+            },
+            "load_ultralytics_pose_model": {
+                "display_name": "...Load Ultralytics (Pose)",
+                "config_path": None,
+            },
+            "load_ultralytics_obb_model": {
+                "display_name": "...Load Ultralytics (OBB)",
+                "config_path": None,
+            },
         }
 
         try:
             local_model_data = load_json(_get_models_config_path())[
                 "models_data"
             ]
-            for model_name, model_dict in local_model_data["Custom"].items():
-                if model_name == "load_custom_model":
-                    continue
-                elif not os.path.exists(model_dict["config_path"]):
-                    continue
-
-                if not model_name.startswith("_custom_"):
-                    model_name = f"_custom_{model_name}"
-
-                model_data["Custom"][model_name] = {
-                    "selected": False,
-                    "favorite": model_dict["favorite"],
-                    "display_name": model_dict["display_name"],
-                    "config_path": model_dict["config_path"],
-                }
-
-                self.model_info[model_name] = {
-                    "display_name": model_dict["display_name"],
-                    "config_path": model_dict["config_path"],
-                }
-
-        except Exception as _:
+        except Exception:
             local_model_data = {}
+
+        for model_name, model_dict in local_model_data.get("Custom", {}).items():
+            if model_name in _ULTRALYTICS_LOADER_TASKS or model_name == "load_custom_model":
+                continue
+            if not os.path.exists(model_dict.get("config_path", "")):
+                continue
+
+            # 文件存在，正常恢复
+            if not model_name.startswith("_custom_"):
+                model_name = f"_custom_{model_name}"
+
+            model_data["Custom"][model_name] = {
+                "selected": False,
+                "favorite": model_dict["favorite"],
+                "display_name": model_dict["display_name"],
+                "config_path": model_dict["config_path"],
+            }
+            self.model_info[model_name] = {
+                "display_name": model_dict["display_name"],
+                "config_path": model_dict["config_path"],
+            }
 
         model_list = self.model_manager.get_model_configs()
         for model_dict in model_list:
@@ -597,7 +663,9 @@ class AutoLabelingWidget(QWidget):
             display_name = model_details.get("display_name", "")
             if display_name == "...Load Custom Model":
                 return (0,)
-            return (1, display_name)
+            if display_name.startswith("...Load Ultralytics"):
+                return (1, display_name)
+            return (2, display_name)
 
         sorted_top_keys = sorted(model_data.keys(), key=top_level_sort_key)
         sorted_data = collections.OrderedDict()
@@ -709,6 +777,76 @@ class AutoLabelingWidget(QWidget):
                 self.clear_auto_labeling_action_requested.emit()
                 self.model_selection_button.setText(
                     config_info["display_name"]
+                )
+                self.model_selection_button.setEnabled(False)
+
+            return
+
+        if model_name in _ULTRALYTICS_LOADER_TASKS:
+            # Unload current model first
+            self.model_manager.unload_model()
+
+            # Open file dialog to select a model file (auto-generates yaml)
+            file_dialog = QFileDialog(self)
+            file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+            file_dialog.setNameFilter(
+                "Model files (*.pt *.torchscript *.onnx *.engine)"
+            )
+
+            if file_dialog.exec():
+                self.hide_labeling_widgets()
+                selected_file = file_dialog.selectedFiles()[0]
+
+                task = _ULTRALYTICS_LOADER_TASKS[model_name]
+                config_dir = os.path.dirname(selected_file)
+                model_basename = os.path.basename(selected_file)
+                model_stem = os.path.splitext(model_basename)[0]
+                config_file = os.path.join(
+                    config_dir, f"{model_stem}.yaml"
+                )
+                gen_config = {
+                    "type": "yolo_ultralytics",
+                    "name": f"_custom_{model_stem}",
+                    "provider": "Ultralytics",
+                    "display_name": model_basename,
+                    "model_path": selected_file,
+                    "task": task,
+                    "conf_threshold": 0.25,
+                    "iou_threshold": 0.45,
+                }
+                with open(config_file, "w", encoding="utf-8") as f:
+                    yaml.dump(gen_config, f, allow_unicode=True)
+                logger.info(f"Auto-generated config: {config_file}")
+
+                flag = self.model_manager.load_custom_model(config_file)
+                if not flag:
+                    self.model_selection_button.setText("No Model")
+                    return
+
+                self.model_info[gen_config["name"]] = {
+                    "display_name": gen_config["display_name"],
+                    "config_path": config_file,
+                }
+
+                # update model_data
+                models_data = self.init_model_data()
+                models_data["Custom"]["load_custom_model"]["selected"] = False
+                for loader_key in _ULTRALYTICS_LOADER_TASKS:
+                    models_data["Custom"][loader_key]["selected"] = False
+                models_data["Custom"][gen_config["name"]] = {
+                    "selected": True,
+                    "favorite": False,
+                    "display_name": gen_config["display_name"],
+                    "config_path": config_file,
+                }
+                save_json(
+                    {"models_data": models_data}, _get_models_config_path()
+                )
+                self.model_dropdown.update_models_data(models_data)
+
+                self.clear_auto_labeling_action_requested.emit()
+                self.model_selection_button.setText(
+                    gen_config["display_name"]
                 )
                 self.model_selection_button.setEnabled(False)
 
