@@ -92,6 +92,7 @@ _CUSTOM_MODELS = [
     "ppocr_v5",
     "ppocr_v6",
     "deimv2",
+    "yolo_ultralytics",
 ]
 
 
@@ -263,6 +264,7 @@ _AUTO_LABELING_CONF_MODELS = [
     "u_rtdetr",
     "yoloe",
     "grounding_sam2",
+    "yolo_ultralytics",
 ]
 
 
@@ -309,6 +311,7 @@ _AUTO_LABELING_IOU_MODELS = [
     "yolo26_pose_track",
     "yoloe",
     "dfine_seg",
+    "yolo_ultralytics",
 ]
 
 
@@ -375,6 +378,7 @@ _AUTO_LABELING_PRESERVE_EXISTING_ANNOTATIONS_STATE_MODELS = [
     "u_rtdetr",
     "yoloe",
     "segment_anything_2_video",
+    "yolo_ultralytics",
 ]
 
 
