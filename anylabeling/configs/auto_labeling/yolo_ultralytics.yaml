@@ -1,0 +1,8 @@
+type: yolo_ultralytics
+name: yolo_ultralytics_custom
+provider: Ultralytics
+display_name: YOLO (Ultralytics)
+model_path: /path/to/your/model.torchscript
+task: detect
+conf_threshold: 0.25
+iou_threshold: 0.45
