@@ -4,7 +4,11 @@ from .about_dialog import AboutDialog
 from .auto_labeling import AutoLabelingWidget
 from .brightness_contrast_dialog import BrightnessContrastDialog
 from .canvas import Canvas
-from .compare_view import CompareViewManager, CompareViewSlider
+from .compare_view import (
+    CompareOverlayWidget,
+    CompareViewManager,
+    CompareViewSlider,
+)
 from .chatbot_dialog import ChatbotDialog
 from .classifier_dialog import ClassifierDialog
 from .crosshair_settings_dialog import CrosshairSettingsDialog
