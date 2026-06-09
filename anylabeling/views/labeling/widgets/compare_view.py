@@ -27,6 +27,11 @@ class CompareViewManager(QtCore.QObject):
 
     status_message = QtCore.pyqtSignal(str, int)
     compare_closed = QtCore.pyqtSignal()
+    compare_pixmap_loaded = QtCore.pyqtSignal(object)
+    mode_changed = QtCore.pyqtSignal(str)
+
+    MODE_SPLIT = "split"
+    MODE_OVERLAY = "overlay"
 
     def __init__(self, canvas, parent: Optional[QtWidgets.QWidget] = None):
         """
@@ -40,7 +45,9 @@ class CompareViewManager(QtCore.QObject):
         self._canvas = canvas
         self._compare_dir: Optional[str] = None
         self._current_compare_path: Optional[str] = None
+        self._current_pixmap = None
         self._file_cache: dict = {}
+        self._mode = self.MODE_SPLIT
         self._init_canvas_state()
 
     def _init_canvas_state(self):
@@ -164,15 +171,20 @@ class CompareViewManager(QtCore.QObject):
             return False
 
         self._current_compare_path = image_path
-        self._canvas.compare_pixmap = pixmap
-        self._canvas.update()
+        self._current_pixmap = pixmap
+        if self._mode == self.MODE_SPLIT:
+            self._canvas.compare_pixmap = pixmap
+            self._canvas.update()
+        self.compare_pixmap_loaded.emit(pixmap)
         return True
 
     def _clear_compare_pixmap(self):
         """Clear the compare pixmap from canvas."""
         self._current_compare_path = None
+        self._current_pixmap = None
         self._canvas.compare_pixmap = None
         self._canvas.update()
+        self.compare_pixmap_loaded.emit(None)
 
     def set_split_position(self, position: float):
         """
@@ -206,6 +218,37 @@ class CompareViewManager(QtCore.QObject):
         """Reset compare view state without closing (for image switching)."""
         self._clear_compare_pixmap()
 
+    def set_mode(self, mode: str):
+        """
+        Set the compare view mode.
+
+        Args:
+            mode: "split" or "overlay".
+        """
+        if mode not in (self.MODE_SPLIT, self.MODE_OVERLAY):
+            return
+        self._mode = mode
+        if mode == self.MODE_OVERLAY:
+            self._canvas.compare_pixmap = None
+        elif self._current_pixmap is not None:
+            self._canvas.compare_pixmap = self._current_pixmap
+        self._canvas.update()
+        self.mode_changed.emit(mode)
+
+    def toggle_mode(self):
+        """Toggle between split and overlay modes."""
+        new_mode = self.MODE_OVERLAY if self._mode == self.MODE_SPLIT else self.MODE_SPLIT
+        self.set_mode(new_mode)
+
+    def get_mode(self) -> str:
+        """
+        Get the current compare view mode.
+
+        Returns:
+            str: "split" or "overlay".
+        """
+        return self._mode
+
 
 class CompareViewSlider(QtWidgets.QWidget):
     """
@@ -216,6 +259,7 @@ class CompareViewSlider(QtWidgets.QWidget):
 
     position_changed = QtCore.pyqtSignal(float)
     close_requested = QtCore.pyqtSignal()
+    mode_toggled = QtCore.pyqtSignal()
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None):
         """
@@ -253,6 +297,30 @@ class CompareViewSlider(QtWidgets.QWidget):
         layout.addWidget(self._value_label)
 
         t = get_theme()
+        self._mode_btn = QtWidgets.QToolButton()
+        self._mode_btn.setToolTip("Switch to overlay mode")
+        self._mode_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {t["surface"]};
+                border: none;
+                border-radius: 10px;
+                padding: 2px 6px;
+                font-size: 12px;
+                font-weight: bold;
+                color: {t["text_secondary"]};
+            }}
+            QToolButton:hover {{
+                background-color: {t["background_hover"]};
+                color: {t["text"]};
+            }}
+            QToolButton:pressed {{
+                background-color: {t["border_light"]};
+            }}
+        """)
+        self._mode_btn.setFixedSize(24, 20)
+        self._mode_btn.clicked.connect(self.mode_toggled.emit)
+        layout.addWidget(self._mode_btn)
+
         self._close_btn = QtWidgets.QToolButton()
         self._close_btn.setText("\u00d7")
         self._close_btn.setToolTip("Close Compare View")
@@ -304,3 +372,80 @@ class CompareViewSlider(QtWidgets.QWidget):
     def hide_slider(self):
         """Hide the slider widget."""
         self.setVisible(False)
+
+    def set_mode(self, mode: str):
+        """
+        Update slider UI for the given mode.
+
+        Args:
+            mode: "split" or "overlay".
+        """
+        if mode == "overlay":
+            self._mode_btn.setText("\u25EB")
+            self._mode_btn.setToolTip("Switch to split mode")
+            self._slider.setVisible(False)
+            self._value_label.setVisible(False)
+            self._left_label.setVisible(False)
+            self._right_label.setVisible(False)
+        else:
+            self._mode_btn.setText("\u25A3")
+            self._mode_btn.setToolTip("Switch to overlay mode")
+            self._slider.setVisible(True)
+            self._value_label.setVisible(True)
+            self._left_label.setVisible(True)
+            self._right_label.setVisible(True)
+
+
+class CompareOverlayWidget(QtWidgets.QDialog):
+    """
+    Floating overlay window that displays the compare image.
+    Always stays on top of the main window, resizable via native window frame.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Compare Image")
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.resize(480, 480)
+        self._original_pixmap = None
+
+        self._image_label = QtWidgets.QLabel("No image")
+        self._image_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        self._image_label.setStyleSheet("""
+            QLabel {
+                background-color: #1e1e1e;
+                color: #888;
+                font-size: 14px;
+            }
+        """)
+        self._image_label.setMinimumSize(100, 100)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._image_label)
+
+    def set_pixmap(self, pixmap):
+        self._original_pixmap = pixmap
+        self._update_display()
+
+    def _update_display(self):
+        if self._original_pixmap is not None and not self._original_pixmap.isNull():
+            scaled = self._original_pixmap.scaled(
+                self._image_label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self._image_label.setPixmap(scaled)
+            self._image_label.setText("")
+        else:
+            self._image_label.clear()
+            self._image_label.setText("No image")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_display()
