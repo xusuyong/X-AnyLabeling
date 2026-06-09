@@ -7,7 +7,7 @@ from .canvas_adjustment import (
     BrightnessContrastProcessor,
     CanvasAdjustmentWidget,
 )
-from .compare_view import CompareViewManager, CompareViewSlider
+from .compare_view import CompareOverlayWidget, CompareViewManager, CompareViewSlider
 from .chatbot_dialog import ChatbotDialog
 from .classifier_dialog import ClassifierDialog
 from .file_dialog_preview import FileDialogPreview
