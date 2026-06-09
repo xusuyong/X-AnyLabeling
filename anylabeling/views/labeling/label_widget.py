@@ -72,6 +72,7 @@ from .widgets import (
     Canvas,
     ChatbotDialog,
     ClassifierDialog,
+    CompareOverlayWidget,
     CompareViewManager,
     CompareViewSlider,
     VQADialog,
@@ -485,6 +486,23 @@ class LabelingWidget(LabelDialog):
             self.compare_view_slider.set_position
         )
 
+        self._compare_overlay = CompareOverlayWidget(self)
+        self.compare_view_manager.compare_pixmap_loaded.connect(
+            self._compare_overlay.set_pixmap
+        )
+        self.compare_view_manager.compare_closed.connect(
+            self._compare_overlay.hide
+        )
+        self.compare_view_manager.mode_changed.connect(
+            self._on_compare_mode_changed
+        )
+        self.compare_view_slider.mode_toggled.connect(
+            self.compare_view_manager.toggle_mode
+        )
+        self._compare_overlay.rejected.connect(
+            lambda: self.close_compare_view(confirm=False)
+        )
+
         scroll_area = QScrollArea()
         scroll_area.setWidget(self.canvas)
         scroll_area.setWidgetResizable(True)
@@ -663,12 +681,39 @@ class LabelingWidget(LabelDialog):
 
         toggle_compare_view = action(
             self.tr("Compare View"),
-            self.toggle_compare_view,
+            lambda checked: compare_view_menu.exec(
+                QtGui.QCursor.pos()
+            ),
             shortcuts.get("toggle_compare_view"),
             "compare",
             self.tr("Toggle split-screen compare view"),
             enabled=True,
         )
+
+        compare_split_action = action(
+            self.tr("Split Mode"),
+            lambda checked: self.toggle_compare_view(
+                CompareViewManager.MODE_SPLIT
+            ),
+            None,
+            "compare",
+            self.tr("Split-screen side-by-side comparison"),
+            enabled=True,
+        )
+        compare_overlay_action = action(
+            self.tr("Overlay Mode"),
+            lambda checked: self.toggle_compare_view(
+                CompareViewManager.MODE_OVERLAY
+            ),
+            None,
+            "compare",
+            self.tr("Floating overlay window comparison"),
+            enabled=True,
+        )
+        compare_view_menu = QtWidgets.QMenu(self.tr("Compare View"), self)
+        compare_view_menu.setIcon(utils.new_icon("compare"))
+        compare_view_menu.addAction(compare_split_action)
+        compare_view_menu.addAction(compare_overlay_action)
 
         change_output_dir = action(
             self.tr("Change Output Dir"),
@@ -2051,7 +2096,7 @@ class LabelingWidget(LabelDialog):
                 open_prev_unchecked_image,
                 opendir,
                 openvideo,
-                toggle_compare_view,
+                compare_view_menu,
                 self.menus.recent_files,
                 save,
                 save_as,
@@ -6139,10 +6184,22 @@ class LabelingWidget(LabelDialog):
         self.canvas.setEnabled(False)
         self.actions.save_as.setEnabled(False)
 
-    def toggle_compare_view(self):
-        """Toggle the compare view on or off."""
+    def _on_compare_mode_changed(self, mode: str):
+        """Handle compare view mode change."""
+        self.compare_view_slider.set_mode(mode)
+        if mode == "overlay":
+            self._compare_overlay.show()
+            self._compare_overlay.raise_()
+        else:
+            self._compare_overlay.hide()
+
+    def toggle_compare_view(self, mode: str):
+        """Toggle the compare view on or off with the given mode."""
         if self.compare_view_manager.is_active():
-            self.close_compare_view()
+            if self.compare_view_manager.get_mode() == mode:
+                self.close_compare_view()
+            else:
+                self.compare_view_manager.set_mode(mode)
             return
 
         if not self.filename:
@@ -6164,7 +6221,30 @@ class LabelingWidget(LabelDialog):
             return
 
         self.compare_view_manager.load_compare_for_file(self.filename)
+        self.compare_view_manager.set_mode(mode)
         self.compare_view_slider.show_slider()
+        self._position_compare_overlay()
+
+    def _position_compare_overlay(self):
+        """Position the compare overlay within screen bounds."""
+        screen = QtWidgets.QApplication.screenAt(
+            self.mapToGlobal(QtCore.QPoint(0, 0))
+        )
+        if screen is None:
+            screen = QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            return
+        screen_geo = screen.availableGeometry()
+        parent_pos = self.mapToGlobal(QtCore.QPoint(0, 0))
+        x = max(
+            screen_geo.left() + 10,
+            min(parent_pos.x() + self.width() + 10, screen_geo.right() - 490),
+        )
+        y = max(
+            screen_geo.top() + 10,
+            min(parent_pos.y() + 100, screen_geo.bottom() - 490),
+        )
+        self._compare_overlay.move(int(x), int(y))
 
     def close_compare_view(self, confirm=True):
         """Close the compare view."""
