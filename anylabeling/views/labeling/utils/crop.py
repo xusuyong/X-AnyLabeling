@@ -12,6 +12,7 @@ import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QGridLayout,
@@ -34,6 +35,7 @@ from anylabeling.views.labeling.utils.general import (
 from anylabeling.views.labeling.utils.qt import new_icon_path
 from anylabeling.views.labeling.utils.style import (
     get_cancel_btn_style,
+    get_checkbox_indicator_style,
     get_export_option_style,
     get_ok_btn_style,
     get_msg_box_style,
@@ -44,95 +46,13 @@ from anylabeling.views.labeling.utils.style import (
 __all__ = ["save_crop"]
 
 
-def crop_and_save(
-    image_file,
-    label,
-    points,
-    save_path,
-    label_to_count,
-    shape_type,
-    min_width,
-    min_height,
-):
-    """Crops and saves a region from an image.
-
-    Args:
-        image_file (str): Path to the source image file
-        label (str): Label for the cropped region
-        points (np.ndarray): Points defining the region to crop
-        save_path (str): Base directory to save cropped images
-        label_to_count (dict): Counter for each label type
-        shape_type (str): Type of shape used for cropping
-        min_width (int): Minimum width of the cropped region
-        min_height (int): Minimum height of the cropped region
-
-    The cropped image is saved using the original filename as a prefix.
-    """
-    image_path = Path(image_file)
-    orig_filename = image_path.stem
-    dst_path = resolve_export_directory(save_path, label)
-
-    # Calculate crop coordinates
-    x, y, w, h = cv2.boundingRect(points)
-    if w < min_width or h < min_height:
-        return
-    xmin, ymin, xmax, ymax = x, y, x + w, y + h
-
-    # Read image safely handling non-ASCII paths
-    try:
-        image = cv2.imdecode(
-            np.fromfile(str(image_path), dtype=np.uint8), cv2.IMREAD_COLOR
-        )
-        if image is None:
-            raise ValueError(f"Failed to read image: {image_file}")
-    except Exception as e:
-        logger.error(f"Error reading image: {str(e)}")
-        return
-
-    # Crop image with bounds checking
-    height, width = image.shape[:2]
-    xmin, ymin = max(0, xmin), max(0, ymin)
-    xmax, ymax = min(width, xmax), min(height, ymax)
-
-    if xmin >= xmax or ymin >= ymax:
-        logger.warning(
-            f"Invalid crop region: xmin={xmin}, xmax={xmax}, ymin={ymin}, ymax={ymax}"
-        )
-        return
-
-    cropped_image = image[ymin:ymax, xmin:xmax]
-    if cropped_image.size == 0:
-        logger.warning(f"Empty cropped image, skipping save")
-        return
-
-    # Create output directory
-    dst_path.mkdir(parents=True, exist_ok=True)
-
-    # Update counter and create output filename
-    label_to_count[label] = label_to_count.get(label, 0) + 1
-    dst_file = resolve_path_within_directory(
-        dst_path / f"{orig_filename}_{label_to_count[label]}-{shape_type}.jpg",
-        save_path,
-    )
-
-    # Save image safely handling non-ASCII paths
-    try:
-        is_success, buf = cv2.imencode(".jpg", cropped_image)
-        if is_success and buf is not None:
-            with open(str(dst_file), "wb") as f:
-                f.write(buf.tobytes())
-        else:
-            raise ValueError(f"Failed to save image: {dst_file}")
-    except Exception as e:
-        logger.error(f"Error saving image: {str(e)}")
-
-
 def process_single_image(args):
     """Process a single image with cropping parameters
 
     Args:
         args: Tuple containing
-        (image_file, label_dir_path, save_path, min_width, min_height, label_start_indices)
+        (image_file, label_dir_path, save_path, min_width, min_height, padding,
+         draw_box, box_thickness, label_start_indices)
     """
     (
         image_file,
@@ -140,6 +60,9 @@ def process_single_image(args):
         save_path,
         min_width,
         min_height,
+        padding,
+        draw_box,
+        box_thickness,
         label_start_indices,
     ) = args
     try:
@@ -179,17 +102,16 @@ def process_single_image(args):
             ):
                 continue
 
-            dst_path = resolve_export_directory(save_path, label)
-            current_index = label_start_indices[label]
-            label_start_indices[label] += 1
+            current_index = label_start_indices.get(label, 0) + 1
+            label_start_indices[label] = current_index
 
             x, y, w, h = cv2.boundingRect(points)
             if w < min_width or h < min_height:
                 continue
 
             height, width = image.shape[:2]
-            xmin, ymin = max(0, x), max(0, y)
-            xmax, ymax = min(width, x + w), min(height, y + h)
+            xmin, ymin = max(0, x - padding), max(0, y - padding)
+            xmax, ymax = min(width, x + w + padding), min(height, y + h + padding)
 
             if xmin >= xmax or ymin >= ymax:
                 logger.warning(
@@ -199,9 +121,21 @@ def process_single_image(args):
 
             cropped_image = image[ymin:ymax, xmin:xmax]
             if cropped_image.size == 0:
-                logger.warning(f"Empty cropped image for {dst_file}")
+                logger.warning(f"Empty cropped image for {orig_filename}, skipping")
                 continue
 
+            # === 在裁剪图像上画框（相对坐标） ===
+            if draw_box:
+                shifted_points = points - [xmin, ymin]  # 把点移动到裁剪区域坐标系
+                cv2.polylines(
+                    cropped_image,
+                    [shifted_points],
+                    isClosed=True,
+                    color=(0, 255, 0),
+                    thickness=box_thickness,
+                )
+
+            dst_path = Path(save_path) / label
             dst_path.mkdir(parents=True, exist_ok=True)
 
             dst_file = resolve_path_within_directory(
@@ -299,6 +233,54 @@ def save_crop(self):
     grid.addWidget(min_height_label, 1, 0)
     grid.addWidget(min_height_spin, 1, 1)
 
+    padding_label = QLabel(self.tr("Padding (pixels):"))
+    padding_label.setToolTip(
+        self.tr(
+            "Expand the crop region outward by this many pixels. "
+            "Set to 0 to crop tightly."
+        )
+    )
+    padding_spin = QSpinBox()
+    padding_spin.setRange(0, 10000)
+    padding_spin.setValue(30)
+    padding_spin.setSuffix(" px")
+    padding_spin.setToolTip(padding_label.toolTip())
+    padding_spin.setStyleSheet(get_spinbox_style())
+    grid.addWidget(padding_label, 2, 0)
+    grid.addWidget(padding_spin, 2, 1)
+
+    draw_box_label = QLabel(self.tr("Draw box:"))
+    draw_box_label.setToolTip(
+        self.tr(
+            "Draw a green outline of the annotation on the cropped image."
+        )
+    )
+    draw_box_checkbox = QCheckBox()
+    draw_box_checkbox.setChecked(True)
+    draw_box_checkbox.setToolTip(draw_box_label.toolTip())
+    draw_box_checkbox.setStyleSheet(get_checkbox_indicator_style())
+    grid.addWidget(draw_box_label, 3, 0)
+    grid.addWidget(draw_box_checkbox, 3, 1)
+
+    thickness_label = QLabel(self.tr("Box thickness:"))
+    thickness_label.setToolTip(
+        self.tr("Line thickness of the drawn box (in pixels).")
+    )
+    thickness_spin = QSpinBox()
+    thickness_spin.setRange(1, 100)
+    thickness_spin.setValue(2)
+    thickness_spin.setSuffix(" px")
+    thickness_spin.setToolTip(thickness_label.toolTip())
+    thickness_spin.setStyleSheet(get_spinbox_style())
+    grid.addWidget(thickness_label, 4, 0)
+    grid.addWidget(thickness_spin, 4, 1)
+
+    def _update_thickness_enabled(_state):
+        thickness_spin.setEnabled(draw_box_checkbox.isChecked())
+        thickness_label.setEnabled(draw_box_checkbox.isChecked())
+
+    draw_box_checkbox.stateChanged.connect(_update_thickness_enabled)
+
     cancel_button = QPushButton(self.tr("Cancel"))
     cancel_button.clicked.connect(dialog.reject)
     cancel_button.setStyleSheet(get_cancel_btn_style())
@@ -312,7 +294,7 @@ def save_crop(self):
     button_layout.setSpacing(8)
     button_layout.addWidget(cancel_button)
     button_layout.addWidget(ok_button)
-    grid.addLayout(button_layout, 2, 1)
+    grid.addLayout(button_layout, 5, 1)
 
     layout.addLayout(grid)
 
@@ -376,29 +358,6 @@ def save_crop(self):
     QApplication.processEvents()
 
     try:
-        image_file_list = (
-            [self.filename] if not self.image_list else self.image_list
-        )
-        label_dir_path = self.output_dir or osp.dirname(self.filename)
-
-        label_counts = {}
-        for image_file in image_file_list:
-            label_file = osp.join(
-                label_dir_path,
-                osp.splitext(osp.basename(image_file))[0] + ".json",
-            )
-            if osp.exists(label_file):
-                with open(label_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    for shape in data.get("shapes", []):
-                        label = shape.get("label", "")
-                        if label:
-                            label_counts[label] = (
-                                label_counts.get(label, 0) + 1
-                            )
-
-        current_indices = {label: 1 for label in label_counts}
-
         process_args = [
             (
                 image_file,
@@ -406,7 +365,10 @@ def save_crop(self):
                 save_path,
                 min_width_spin.value(),
                 min_height_spin.value(),
-                current_indices.copy(),
+                padding_spin.value(),
+                draw_box_checkbox.isChecked(),
+                thickness_spin.value(),
+                {},  # 每张图独立计数，文件名用 orig_filename 区分
             )
             for image_file in image_file_list
         ]
