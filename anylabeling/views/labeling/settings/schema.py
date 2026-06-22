@@ -755,6 +755,23 @@ def _non_shortcut_fields() -> list[SettingField]:
             ),
         ),
         SettingField(
+            "pixel_size_mm",
+            QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT, "Pixel Size (mm)"
+            ),
+            "float",
+            "Canvas",
+            "Interaction",
+            "Measurement",
+            minimum=0.0,
+            maximum=1000.0,
+            decimals=7,
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "Millimeters per pixel used to show each box's real-world area in the status bar. Set to 0 to disable.",
+            ),
+        ),
+        SettingField(
             "canvas.double_click",
             QT_TRANSLATE_NOOP(SETTINGS_TRANSLATION_CONTEXT, "Double Click"),
             "enum",

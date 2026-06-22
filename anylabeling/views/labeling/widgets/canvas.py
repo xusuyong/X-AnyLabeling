@@ -59,7 +59,7 @@ class Canvas(
     # when the cursor moves over an object
     mode_changed = QtCore.pyqtSignal()
     new_shape = QtCore.pyqtSignal()
-    show_shape = QtCore.pyqtSignal(int, int, QtCore.QPointF)
+    show_shape = QtCore.pyqtSignal(float, float, QtCore.QPointF)
     selection_changed = QtCore.pyqtSignal(list)
     shape_moved = QtCore.pyqtSignal()
     shape_rotated = QtCore.pyqtSignal()
@@ -1584,8 +1584,8 @@ class Canvas(
                 return
 
             if self.create_mode in ["rectangle", "cuboid"]:
-                shape_width = int(abs(self.current[0].x() - pos.x()))
-                shape_height = int(abs(self.current[0].y() - pos.y()))
+                shape_width = abs(self.current[0].x() - pos.x())
+                shape_height = abs(self.current[0].y() - pos.y())
                 self.show_shape.emit(shape_height, shape_width, pos)
 
             color = QtGui.QColor(0, 0, 255)
@@ -1692,8 +1692,8 @@ class Canvas(
                 if self.h_shape.shape_type == "rectangle":
                     p1 = self.h_shape[0]
                     p2 = self.h_shape[2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
                 elif (
                     self.h_shape.shape_type == "cuboid"
@@ -1701,8 +1701,8 @@ class Canvas(
                 ):
                     p1 = self.h_shape[0]
                     p2 = self.h_shape[2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
             elif (
                 self.selected_cuboid_face()
@@ -1720,8 +1720,8 @@ class Canvas(
                 self.moving_shape = True
                 p1 = self.h_shape[0]
                 p2 = self.h_shape[2]
-                shape_width = int(abs(p2.x() - p1.x()))
-                shape_height = int(abs(p2.y() - p1.y()))
+                shape_width = abs(p2.x() - p1.x())
+                shape_height = abs(p2.y() - p1.y())
                 self.show_shape.emit(shape_height, shape_width, pos)
             elif self.selected_shapes and self.prev_point:
                 self.h_cuboid_face = None
@@ -1737,8 +1737,8 @@ class Canvas(
                 if self.selected_shapes[-1].shape_type == "rectangle":
                     p1 = self.selected_shapes[-1][0]
                     p2 = self.selected_shapes[-1][2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
                 elif (
                     self.selected_shapes[-1].shape_type == "cuboid"
@@ -1746,8 +1746,8 @@ class Canvas(
                 ):
                     p1 = self.selected_shapes[-1][0]
                     p2 = self.selected_shapes[-1][2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
             else:
                 if (
@@ -1783,8 +1783,8 @@ class Canvas(
                 if self.h_shape.shape_type == "rectangle":
                     p1 = self.h_shape[0]
                     p2 = self.h_shape[2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
                 elif (
                     self.h_shape.shape_type == "cuboid"
@@ -1792,8 +1792,8 @@ class Canvas(
                 ):
                     p1 = self.h_shape[0]
                     p2 = self.h_shape[2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
             elif (
                 self.selected_cuboid_face()
@@ -1810,8 +1810,8 @@ class Canvas(
                 self.moving_shape = True
                 p1 = self.h_shape[0]
                 p2 = self.h_shape[2]
-                shape_width = int(abs(p2.x() - p1.x()))
-                shape_height = int(abs(p2.y() - p1.y()))
+                shape_width = abs(p2.x() - p1.x())
+                shape_height = abs(p2.y() - p1.y())
                 self.show_shape.emit(shape_height, shape_width, pos)
             else:
                 self.is_move_editing = False
@@ -2014,14 +2014,14 @@ class Canvas(
                 if shape.shape_type == "rectangle":
                     p1 = self.h_shape[0]
                     p2 = self.h_shape[2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
                 elif shape.shape_type == "cuboid" and len(self.h_shape) >= 4:
                     p1 = self.h_shape[0]
                     p2 = self.h_shape[2]
-                    shape_width = int(abs(p2.x() - p1.x()))
-                    shape_height = int(abs(p2.y() - p1.y()))
+                    shape_width = abs(p2.x() - p1.x())
+                    shape_height = abs(p2.y() - p1.y())
                     self.show_shape.emit(shape_height, shape_width, pos)
                 break
         else:  # Nothing found, clear highlights, reset state.
