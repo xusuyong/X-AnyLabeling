@@ -5610,36 +5610,37 @@ class LabelingWidget(LabelDialog):
         - shape_width (float): The width of the shape.
         - pos (QPointF): The current mouse coordinates inside the shape.
         """
-        num_images = len(self.image_list)
         if shape_height > 0 and shape_width > 0:
-            if num_images and self.filename in self.image_list:
+            pixel_size_mm = float(self._config.get("pixel_size_mm", 0.0) or 0.0)
+            if pixel_size_mm > 0:
+                area_px = shape_width * shape_height
+                width_mm = shape_width * pixel_size_mm
+                height_mm = shape_height * pixel_size_mm
+                area_mm2 = width_mm * height_mm
                 self.status(
-                    str(self.tr("X: %d, Y: %d | H: %d, W: %d"))
+                    str(
+                        self.tr(
+                            "X: %.4f, Y: %.4f | H: %.4f, W: %.4f, A: %.4f | H: %.4f mm, W: %.4f mm, A: %.4f mm²"
+                        )
+                    )
                     % (
-                        int(pos.x()),
-                        int(pos.y()),
+                        pos.x(),
+                        pos.y(),
                         shape_height,
                         shape_width,
+                        area_px,
+                        height_mm,
+                        width_mm,
+                        area_mm2,
                     )
                 )
             else:
                 self.status(
-                    str(self.tr("X: %d, Y: %d | H: %d, W: %d"))
-                    % (int(pos.x()), int(pos.y()), shape_height, shape_width)
+                    str(self.tr("X: %.4f, Y: %.4f | H: %.4f, W: %.4f"))
+                    % (pos.x(), pos.y(), shape_height, shape_width)
                 )
         elif self.image_path:
-            if num_images and self.filename in self.image_list:
-                self.status(
-                    str(self.tr("X: %d, Y: %d"))
-                    % (
-                        int(pos.x()),
-                        int(pos.y()),
-                    )
-                )
-            else:
-                self.status(
-                    str(self.tr("X: %d, Y: %d")) % (int(pos.x()), int(pos.y()))
-                )
+            self.status(str(self.tr("X: %.4f, Y: %.4f")) % (pos.x(), pos.y()))
 
     def on_navigator_request(self, x_ratio, y_ratio):
         """Handle navigation request from navigator widget."""
