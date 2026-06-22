@@ -22,6 +22,7 @@ show_labels: true
 show_scores: true
 show_degrees: false
 show_shapes: true
+pixel_size_mm: 0.0  # millimeters per pixel; 0 disables real-world area display in the status bar
 show_linking: true
 show_attributes: true
 logger_level: info
