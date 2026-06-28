@@ -1,4 +1,4 @@
-language: en_US
+language: zh_CN
 theme: auto  # auto, light, dark
 font_family: null  # null uses the system default font
 model_hub: github  # github, modelscope
@@ -16,7 +16,7 @@ auto_highlight_shape: true
 auto_switch_to_edit_mode: true
 exif_scan_enabled: true
 show_groups: false
-show_masks: true
+show_masks: false
 show_texts: true
 show_labels: true
 show_scores: true
@@ -56,8 +56,8 @@ shape:
   select_line_color: [255, 255, 255, 255]
   select_fill_color: [0, 255, 0, 155]
   hvertex_fill_color: [255, 255, 255, 255]
-  point_size: 10
-  line_width: 4
+  point_size: 8
+  line_width: 2
 
 # main
 flag_dock:
@@ -154,7 +154,7 @@ shortcuts:
   save_as: Ctrl+Shift+S
   save_to: null
   delete_file: Ctrl+Delete
-  delete_image_file: Ctrl+Shift+Delete
+  delete_image_file: F1
 
   open_next: D
   open_prev: A
@@ -162,8 +162,8 @@ shortcuts:
   open_prev_unchecked: Ctrl+Shift+A
   toggle_annotation_checked: Ctrl+Alt+K
 
-  zoom_in: [Ctrl++]
-  zoom_out: Ctrl+-
+  zoom_in: Ctrl+`
+  zoom_out: Ctrl+Tab
   zoom_to_original: Ctrl+=
   fit_window: Ctrl+F
   fit_width: Ctrl+Shift+F
@@ -181,7 +181,7 @@ shortcuts:
   create_line: Shift+L
   create_point: Shift+P
   create_linestrip: Shift+S
-  edit_polygon: Ctrl+J
+  edit_polygon: Esc
   edit_brush_mode: Shift+B
   delete_polygon: Delete
   duplicate_polygon: Ctrl+D
