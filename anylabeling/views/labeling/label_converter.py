@@ -1838,6 +1838,12 @@ class LabelConverter:
                 (image_height, image_width, 3), dtype=np.uint8
             )
             cv2.imencode(".png", empty_mask)[1].tofile(output_file)
+        elif output_format == "index":
+            background_value = mapping_table.get("background", 0)
+            empty_mask = np.full(
+                image_shape, background_value, dtype=np.uint8
+            )
+            cv2.imencode(".png", empty_mask)[1].tofile(output_file)
         else:
             raise ValueError("Invalid output format specified")
 
@@ -1875,10 +1881,7 @@ class LabelConverter:
             points = self.clamp_points(
                 shape["points"], image_width, image_height
             )
-            polygon = []
-            for point in points:
-                x, y = point
-                polygon.append((int(x), int(y)))
+            polygon = [(int(x), int(y)) for x, y in points]
             polygons.append(
                 {
                     "label": shape["label"],
@@ -1888,7 +1891,7 @@ class LabelConverter:
             )
 
         output_format = mapping_table["type"]
-        if output_format not in ["grayscale", "rgb"]:
+        if output_format not in ["grayscale", "rgb", "index"]:
             raise ValueError("Invalid output format specified")
         mapping_color = mapping_table["colors"]
         label_priority = mapping_table.get("label_priority", {})
@@ -1944,6 +1947,21 @@ class LabelConverter:
             cv2.imencode(".png", cv2.cvtColor(color_mask, cv2.COLOR_BGR2RGB))[
                 1
             ].tofile(output_file)
+
+        elif output_format == "index":
+            background_value = mapping_table.get("background", 0)
+            index_mask = np.full(
+                image_shape, background_value, dtype=np.uint8
+            )
+            for item in polygons:
+                label, polygon = item["label"], item["polygon"]
+                if label in mapping_color:
+                    cv2.fillPoly(
+                        index_mask,
+                        [np.array(polygon, dtype=np.int32)],
+                        mapping_color[label],
+                    )
+            cv2.imencode(".png", index_mask)[1].tofile(output_file)
 
     def custom_to_mot(self, input_path, save_path):
         mot_structure = {
