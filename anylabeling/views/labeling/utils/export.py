@@ -5,8 +5,12 @@ import pathlib
 import shutil
 import time
 
-from PyQt6 import QtWidgets
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+import cv2
+import numpy as np
+import yaml
+
+from PyQt6 import QtGui, QtWidgets
+from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
@@ -16,6 +20,7 @@ from PyQt6.QtWidgets import (
 from anylabeling.views.labeling.label_converter import LabelConverter
 from anylabeling.views.labeling.logger import logger
 from anylabeling.views.labeling.widgets import Popup
+from anylabeling.views.labeling.utils.colormap import label_colormap
 from anylabeling.views.labeling.utils.qt import new_icon_path
 from anylabeling.views.labeling.utils.style import *
 
@@ -911,35 +916,123 @@ def export_dota_annotation(self):
         popup.show_popup(self, position="center")
 
 
+def _collect_polygon_labels(self):
+    """Collect all unique polygon labels from label files in the image list."""
+    labels = set()
+    image_list = self.image_list if self.image_list else [self.filename]
+    label_dir_path = self.output_dir or osp.dirname(self.filename)
+    for image_file in image_list:
+        label_file = osp.join(
+            label_dir_path,
+            osp.splitext(osp.basename(image_file))[0] + ".json",
+        )
+        if not osp.exists(label_file):
+            continue
+        try:
+            with open(label_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for shape in data.get("shapes", []):
+                if shape.get("shape_type") == "polygon":
+                    label = shape.get("label", "")
+                    if label:
+                        labels.add(label)
+        except Exception:
+            continue
+    return sorted(labels)
+
+
 def export_mask_annotation(self):
     if not _check_filename_exist(self):
         return
 
-    filter = "JSON Files (*.json);;All Files (*)"
-    color_map_file, _ = QtWidgets.QFileDialog.getOpenFileName(
-        self,
-        self.tr("Select a specific color_map file"),
-        "",
-        filter,
-    )
-    if not color_map_file:
-        return
-
-    with open(color_map_file, "r", encoding="utf-8") as f:
-        mapping_table = json.load(f)
+    # Collect polygon labels upfront (used for both preview and mapping)
+    all_labels = _collect_polygon_labels(self)
+    cmap = label_colormap(max(len(all_labels) + 1, 256))
 
     dialog = QtWidgets.QDialog(self)
-    dialog.setWindowTitle(self.tr("Export options"))
-    dialog.setMinimumWidth(500)
+    dialog.setWindowTitle(self.tr("Export Mask Annotations"))
+    dialog.setMinimumWidth(560)
     dialog.setStyleSheet(get_export_option_style())
 
     layout = QVBoxLayout()
     layout.setContentsMargins(24, 24, 24, 24)
     layout.setSpacing(16)
 
-    path_layout = QVBoxLayout()
+    # --- Mode selection ---
+    mode_group = QtWidgets.QGroupBox(self.tr("Mask Mode"))
+    mode_layout = QVBoxLayout()
+    mode_layout.setSpacing(8)
+    bw_radio = QtWidgets.QRadioButton(self.tr("Black & White (binary mask)"))
+    bw_radio.setToolTip(
+        self.tr("All targets are white (255), background is black (0).")
+    )
+    multi_radio = QtWidgets.QRadioButton(
+        self.tr("Multi-class semantic segmentation")
+    )
+    multi_radio.setToolTip(
+        self.tr("Each label is auto-assigned a unique color.")
+    )
+    ultralytics_radio = QtWidgets.QRadioButton(
+        self.tr("Ultralytics semantic segmentation (class-index mask)")
+    )
+    ultralytics_radio.setToolTip(
+        self.tr(
+            "Single-channel PNG where pixel value equals the class "
+            "index. Background is index 0. Matches the masks_dir "
+            "format used by Ultralytics semantic segmentation."
+        )
+    )
+    bw_radio.setChecked(True)
+    mode_layout.addWidget(bw_radio)
+    mode_layout.addWidget(multi_radio)
+    mode_layout.addWidget(ultralytics_radio)
+    mode_group.setLayout(mode_layout)
+    layout.addWidget(mode_group)
+
+    # --- Label color preview ---
+    preview_title = QtWidgets.QLabel(self.tr("Label color preview"))
+    layout.addWidget(preview_title)
+
+    preview_list = QtWidgets.QListWidget()
+    preview_list.setIconSize(QSize(16, 16))
+    preview_list.setMaximumHeight(140)
+    layout.addWidget(preview_list)
+
+    def build_preview():
+        preview_list.clear()
+        for i, label in enumerate(all_labels):
+            if multi_radio.isChecked():
+                color = cmap[i + 1]  # index 0 is background (black)
+                rgb = (int(color[0]), int(color[1]), int(color[2]))
+                item_text = label
+            elif ultralytics_radio.isChecked():
+                # Show the flat gray value corresponding to the class
+                # index so users get a visual sense of separation; the
+                # actual saved pixel value is the raw index (i + 1).
+                gray = min(255, (i + 1) * 40)
+                rgb = (gray, gray, gray)
+                item_text = f"{label}  (index {i + 1})"
+            else:
+                rgb = (255, 255, 255)
+                item_text = label
+            pix = QtGui.QPixmap(16, 16)
+            pix.fill(QtGui.QColor(*rgb))
+            item = QtWidgets.QListWidgetItem(item_text)
+            item.setIcon(QtGui.QIcon(pix))
+            preview_list.addItem(item)
+
+    build_preview()
+
+    def on_mode_toggled():
+        build_preview()
+
+    bw_radio.toggled.connect(on_mode_toggled)
+    multi_radio.toggled.connect(on_mode_toggled)
+    ultralytics_radio.toggled.connect(on_mode_toggled)
+
+    # --- Export path ---
     path_label = QtWidgets.QLabel(self.tr("Export path"))
-    path_layout.addWidget(path_label)
+    layout.addWidget(path_label)
 
     path_input_layout = QHBoxLayout()
     path_input_layout.setSpacing(8)
@@ -954,7 +1047,7 @@ def export_mask_annotation(self):
 
     def browse_export_path():
         path = QtWidgets.QFileDialog.getExistingDirectory(
-            self,
+            dialog,
             self.tr("Select Export Directory"),
             path_edit.text(),
             QtWidgets.QFileDialog.Option.DontUseNativeDialog,
@@ -968,8 +1061,7 @@ def export_mask_annotation(self):
 
     path_input_layout.addWidget(path_edit)
     path_input_layout.addWidget(path_button)
-    path_layout.addLayout(path_input_layout)
-    layout.addLayout(path_layout)
+    layout.addLayout(path_input_layout)
 
     button_layout = QHBoxLayout()
     button_layout.setContentsMargins(0, 16, 0, 0)
@@ -993,6 +1085,33 @@ def export_mask_annotation(self):
 
     if not result:
         return
+
+    # --- Build mapping_table according to selected mode (no file needed) ---
+    if multi_radio.isChecked():
+        mapping_table = {
+            "type": "rgb",
+            "colors": {
+                label: [int(c) for c in cmap[i + 1]]
+                for i, label in enumerate(all_labels)
+            },
+        }
+    elif ultralytics_radio.isChecked():
+        # Background is index 0; each label gets the next contiguous
+        # index. This matches Ultralytics' masks_dir semantic
+        # segmentation format (pixel value == class id).
+        mapping_table = {
+            "type": "index",
+            "background": 0,
+            "colors": {
+                label: i + 1 for i, label in enumerate(all_labels)
+            },
+        }
+    else:
+        # Black & White: every polygon label maps to 255 (white) on black background
+        mapping_table = {
+            "type": "grayscale",
+            "colors": {label: 255 for label in all_labels},
+        }
 
     save_path = path_edit.text()
     if osp.exists(save_path):
@@ -1035,10 +1154,14 @@ def export_mask_annotation(self):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
-    progress_dialog.setRange(0, 0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
+    progress_dialog.show()
+    QtWidgets.QApplication.processEvents()
+
+    canceled = False
+    failed_files = []
 
     try:
         for i, image_file in enumerate(image_list):
@@ -1052,28 +1175,348 @@ def export_mask_annotation(self):
                 src_file = osp.join(osp.dirname(image_file), label_file_name)
             dst_file = osp.join(save_path, dst_file_name)
 
-            if not osp.exists(src_file):
-                continue
+            if osp.exists(src_file):
+                try:
+                    converter.custom_to_mask(src_file, dst_file, mapping_table)
+                except Exception as e:
+                    failed_files.append(image_file_name)
+                    logger.error(
+                        f"Failed to convert {image_file_name}: {e}"
+                    )
+            elif mapping_table["type"] == "index":
+                # Ultralytics expects one mask per image; write an
+                # all-background mask when there is no annotation file.
+                try:
+                    img = cv2.imdecode(
+                        np.fromfile(image_file, dtype=np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    if img is None:
+                        raise ValueError(f"Failed to read image: {image_file}")
+                    h, w = img.shape[:2]
+                    background_value = mapping_table.get("background", 0)
+                    mask = np.full((h, w), background_value, dtype=np.uint8)
+                    cv2.imencode(".png", mask)[1].tofile(dst_file)
+                except Exception as e:
+                    failed_files.append(image_file_name)
+                    logger.error(
+                        f"Failed to write background mask for "
+                        f"{image_file_name}: {e}"
+                    )
 
-            converter.custom_to_mask(src_file, dst_file, mapping_table)
-
-            progress_dialog.setValue(i)
+            progress_dialog.setValue(i + 1)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
+                canceled = True
                 break
 
         progress_dialog.close()
-        template = self.tr(
-            "Exporting annotations successfully!\n"
-            "Results have been saved to:\n"
-            "%s"
-        )
-        message_text = template % save_path
+
+        if canceled:
+            popup = Popup(
+                self.tr("Export canceled."),
+                self,
+                icon=new_icon_path("warning", "svg"),
+            )
+            popup.show_popup(self, position="center")
+        else:
+            if mapping_table["type"] == "index":
+                # Write index -> label reference so users can copy it
+                # straight into their Ultralytics dataset yaml `names`.
+                names_path = osp.join(save_path, "names.txt")
+                try:
+                    with open(names_path, "w", encoding="utf-8") as f:
+                        f.write("names:\n")
+                        f.write(
+                            f"  {mapping_table.get('background', 0)}: background\n"
+                        )
+                        for label, idx in mapping_table["colors"].items():
+                            f.write(f"  {idx}: {label}\n")
+                except Exception as e:
+                    logger.error(f"Failed to write names.txt: {e}")
+
+            template = self.tr(
+                "Exporting annotations successfully!\n"
+                "Results have been saved to:\n"
+                "%s"
+            )
+            message_text = template % save_path
+            if failed_files:
+                message_text += self.tr(
+                    "\n\n%d file(s) failed to convert, see log for details."
+                ) % len(failed_files)
+            popup = Popup(
+                message_text,
+                self,
+                icon=new_icon_path("copy-green", "svg"),
+            )
+            popup.show_popup(self, popup_height=65, position="center")
+
+    except Exception as e:
+        message = f"Error occurred while exporting annotations: {str(e)}"
+        progress_dialog.close()
+        logger.error(message)
         popup = Popup(
-            message_text,
+            message,
             self,
-            icon=new_icon_path("copy-green", "svg"),
+            icon=new_icon_path("error", "svg"),
         )
-        popup.show_popup(self, popup_height=65, position="center")
+        popup.show_popup(self, position="center")
+
+
+def _get_image_shape(image_file, label_data=None):
+    """Get (height, width) for an image, preferring label json metadata."""
+    if label_data:
+        w = label_data.get("imageWidth")
+        h = label_data.get("imageHeight")
+        if w and h:
+            return int(h), int(w)
+    img = cv2.imdecode(
+        np.fromfile(str(image_file), dtype=np.uint8), cv2.IMREAD_COLOR
+    )
+    if img is None:
+        raise ValueError(f"Failed to read image: {image_file}")
+    return img.shape[:2]
+
+
+def export_ultralytics_semantic_annotation(self):
+    """
+    Export images + PNG masks in the Ultralytics semantic segmentation
+    format: https://docs.ultralytics.com/datasets/semantic/#dataset-yaml-format
+
+    Whatever folder is currently open is treated as one split (its
+    basename becomes the split name, e.g. "train"/"val"). Running this
+    export again on a different split folder, pointed at the same output
+    root, extends the same dataset.yaml (consistent class IDs, added
+    train/val/test keys) instead of overwriting it.
+    """
+    if not _check_filename_exist(self):
+        return
+
+    all_labels = _collect_polygon_labels(self)
+
+    dialog = QtWidgets.QDialog(self)
+    dialog.setWindowTitle(self.tr("Export Ultralytics Semantic Segmentation"))
+    dialog.setMinimumWidth(560)
+    dialog.setStyleSheet(get_export_option_style())
+
+    layout = QVBoxLayout()
+    layout.setContentsMargins(24, 24, 24, 24)
+    layout.setSpacing(16)
+
+    path_label = QtWidgets.QLabel(self.tr("Dataset root directory"))
+    layout.addWidget(path_label)
+
+    path_input_layout = QHBoxLayout()
+    path_input_layout.setSpacing(8)
+
+    source_dir = osp.dirname(self.filename)
+    path_edit = QtWidgets.QLineEdit()
+    path_edit.setText(
+        osp.realpath(osp.join(source_dir, "..", "ultralytics_semantic"))
+    )
+    path_edit.setPlaceholderText(self.tr("Select Dataset Root Directory"))
+
+    def browse_export_path():
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            dialog,
+            self.tr("Select Dataset Root Directory"),
+            path_edit.text(),
+            QtWidgets.QFileDialog.Option.DontUseNativeDialog,
+        )
+        if path:
+            path_edit.setText(path)
+
+    path_button = QtWidgets.QPushButton(self.tr("Browse"))
+    path_button.clicked.connect(browse_export_path)
+    path_button.setStyleSheet(get_cancel_btn_style())
+
+    path_input_layout.addWidget(path_edit)
+    path_input_layout.addWidget(path_button)
+    layout.addLayout(path_input_layout)
+
+    hint_label = QtWidgets.QLabel(
+        self.tr(
+            "The current folder's name is used as the split (e.g. "
+            "'train' or 'val'). Run this export again on other split "
+            "folders, pointed at the same root, to build the full dataset."
+        )
+    )
+    hint_label.setStyleSheet(
+        "color: gray; font-style: italic; padding-left: 5px;"
+    )
+    hint_label.setWordWrap(True)
+    layout.addWidget(hint_label)
+
+    button_layout = QHBoxLayout()
+    button_layout.setContentsMargins(0, 16, 0, 0)
+    button_layout.setSpacing(8)
+
+    cancel_button = QtWidgets.QPushButton(self.tr("Cancel"))
+    cancel_button.clicked.connect(dialog.reject)
+    cancel_button.setStyleSheet(get_cancel_btn_style())
+
+    ok_button = QtWidgets.QPushButton(self.tr("OK"))
+    ok_button.clicked.connect(dialog.accept)
+    ok_button.setStyleSheet(get_ok_btn_style())
+
+    button_layout.addStretch()
+    button_layout.addWidget(cancel_button)
+    button_layout.addWidget(ok_button)
+    layout.addLayout(button_layout)
+
+    dialog.setLayout(layout)
+    result = dialog.exec()
+
+    if not result:
+        return
+
+    output_root = path_edit.text()
+    if not output_root:
+        return
+
+    split_name = osp.basename(osp.normpath(source_dir)) or "train"
+
+    images_out = osp.join(output_root, "images", split_name)
+    masks_out = osp.join(output_root, "masks", split_name)
+    os.makedirs(images_out, exist_ok=True)
+    os.makedirs(masks_out, exist_ok=True)
+
+    # --- Load existing dataset.yaml (if any) to keep class IDs consistent
+    # across multiple runs (e.g. once for train, once for val). ---
+    yaml_path = osp.join(output_root, "dataset.yaml")
+    names = {0: "background"}
+    if osp.exists(yaml_path):
+        try:
+            with open(yaml_path, "r", encoding="utf-8") as f:
+                existing = yaml.safe_load(f) or {}
+            existing_names = existing.get("names") or {}
+            names = {int(k): v for k, v in existing_names.items()}
+            if 0 not in names:
+                names[0] = "background"
+        except Exception as e:
+            logger.warning(f"Could not read existing dataset.yaml: {e}")
+
+    label_to_id = {v: k for k, v in names.items() if k != 0}
+    next_id = (max(names.keys()) + 1) if names else 1
+    for label in all_labels:
+        if label not in label_to_id:
+            label_to_id[label] = next_id
+            names[next_id] = label
+            next_id += 1
+
+    mapping_table = {"type": "grayscale", "colors": label_to_id}
+
+    converter = LabelConverter()
+    image_list = self.image_list if self.image_list else [self.filename]
+
+    progress_dialog = QProgressDialog(
+        self.tr("Exporting..."), self.tr("Cancel"), 0, len(image_list), self
+    )
+    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+    progress_dialog.setWindowTitle(self.tr("Progress"))
+    progress_dialog.setMinimumWidth(500)
+    progress_dialog.setMinimumHeight(150)
+    progress_dialog.setStyleSheet(
+        get_progress_dialog_style(color="#1d1d1f", height=20)
+    )
+    progress_dialog.show()
+    QtWidgets.QApplication.processEvents()
+
+    canceled = False
+    failed_files = []
+
+    try:
+        for i, image_file in enumerate(image_list):
+            image_file_name = osp.basename(image_file)
+            stem = osp.splitext(image_file_name)[0]
+            label_file_name = stem + ".json"
+            dst_mask_file = osp.join(masks_out, stem + ".png")
+
+            if self.output_dir:
+                src_label_file = osp.join(self.output_dir, label_file_name)
+            else:
+                src_label_file = osp.join(
+                    osp.dirname(image_file), label_file_name
+                )
+
+            try:
+                shutil.copy2(
+                    image_file, osp.join(images_out, image_file_name)
+                )
+
+                has_polygons = False
+                label_data = None
+                if osp.exists(src_label_file):
+                    with open(src_label_file, "r", encoding="utf-8") as f:
+                        label_data = json.load(f)
+                    has_polygons = any(
+                        shape.get("shape_type") == "polygon"
+                        for shape in label_data.get("shapes", [])
+                    )
+
+                if has_polygons:
+                    converter.custom_to_mask(
+                        src_label_file, dst_mask_file, mapping_table
+                    )
+                else:
+                    # No shapes (or no label file): write an all-background mask
+                    height, width = _get_image_shape(image_file, label_data)
+                    blank_mask = np.zeros((height, width), dtype=np.uint8)
+                    cv2.imencode(".png", blank_mask)[1].tofile(
+                        dst_mask_file
+                    )
+            except Exception as e:
+                failed_files.append(image_file_name)
+                logger.error(
+                    f"Failed to export {image_file_name}: {e}"
+                )
+
+            progress_dialog.setValue(i + 1)
+            QtWidgets.QApplication.processEvents()
+            if progress_dialog.wasCanceled():
+                canceled = True
+                break
+
+        progress_dialog.close()
+
+        if canceled:
+            popup = Popup(
+                self.tr("Export canceled."),
+                self,
+                icon=new_icon_path("warning", "svg"),
+            )
+            popup.show_popup(self, position="center")
+        else:
+            # --- Write / update dataset.yaml ---
+            yaml_data = {"path": osp.realpath(output_root)}
+            for split in ("train", "val", "test"):
+                if osp.isdir(osp.join(output_root, "images", split)):
+                    yaml_data[split] = f"images/{split}"
+            yaml_data["masks_dir"] = "masks"
+            yaml_data["names"] = dict(sorted(names.items()))
+
+            with open(yaml_path, "w", encoding="utf-8") as f:
+                yaml.dump(
+                    yaml_data, f, allow_unicode=True, sort_keys=False
+                )
+
+            template = self.tr(
+                "Exporting annotations successfully!\n"
+                "Results have been saved to:\n"
+                "%s"
+            )
+            message_text = template % output_root
+            if failed_files:
+                message_text += self.tr(
+                    "\n\n%d file(s) failed to export, see log for details."
+                ) % len(failed_files)
+            popup = Popup(
+                message_text,
+                self,
+                icon=new_icon_path("copy-green", "svg"),
+            )
+            popup.show_popup(self, popup_height=65, position="center")
 
     except Exception as e:
         message = f"Error occurred while exporting annotations: {str(e)}"

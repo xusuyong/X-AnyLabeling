@@ -1772,7 +1772,6 @@ class LabelConverter:
         image_width = data["imageWidth"]
         image_height = data["imageHeight"]
         image_shape = (image_height, image_width)
-
         polygons = []
         for shape in data["shapes"]:
             shape_type = shape["shape_type"]
@@ -1781,10 +1780,7 @@ class LabelConverter:
             points = self.clamp_points(
                 shape["points"], image_width, image_height
             )
-            polygon = []
-            for point in points:
-                x, y = point
-                polygon.append((int(x), int(y)))
+            polygon = [(int(x), int(y)) for x, y in points]
             polygons.append(
                 {
                     "label": shape["label"],
@@ -1793,18 +1789,37 @@ class LabelConverter:
             )
 
         output_format = mapping_table["type"]
-        if output_format not in ["grayscale", "rgb"]:
+        if output_format not in ["grayscale", "rgb", "index"]:
             raise ValueError("Invalid output format specified")
         mapping_color = mapping_table["colors"]
-        if output_format == "grayscale" and polygons:
-            # Initialize binary_mask
-            binary_mask = np.zeros(image_shape, dtype=np.uint8)
-            # Sort polygons by area to handle overlapping (larger areas first)
-            polygons.sort(
-                key=lambda x: cv2.contourArea(np.array(x["polygon"])),
-                reverse=True,
-            )
 
+        # Sort by area descending: draw larger polygons first so smaller
+        # ones painted afterward naturally take priority in overlaps
+        # (matches Ultralytics' own polygon-loader override behavior).
+        polygons.sort(
+            key=lambda x: cv2.contourArea(np.array(x["polygon"])),
+            reverse=True,
+        )
+
+        if output_format == "index":
+            # Single-channel class-index mask for Ultralytics semantic
+            # segmentation (masks_dir format): pixel value == class id.
+            # Written for every image, even when there are no polygons,
+            # since Ultralytics expects one mask per image.
+            background_value = mapping_table.get("background", 0)
+            mask = np.full(image_shape, background_value, dtype=np.uint8)
+            for item in polygons:
+                label, polygon = item["label"], item["polygon"]
+                if label in mapping_color:
+                    cv2.fillPoly(
+                        mask,
+                        [np.array(polygon, dtype=np.int32)],
+                        mapping_color[label],
+                    )
+            cv2.imencode(".png", mask)[1].tofile(output_file)
+
+        elif output_format == "grayscale":
+            binary_mask = np.zeros(image_shape, dtype=np.uint8)
             for item in polygons:
                 label, polygon = item["label"], item["polygon"]
                 if label in mapping_color:
@@ -1814,34 +1829,25 @@ class LabelConverter:
                         [np.array(polygon, dtype=np.int32)],
                         mapping_color[label],
                     )
-                    # Only update unassigned pixels (where binary_mask is still 0)
-                    binary_mask = np.where(binary_mask == 0, mask, binary_mask)
-
+                    binary_mask = np.where(
+                        binary_mask == 0, mask, binary_mask
+                    )
             cv2.imencode(".png", binary_mask)[1].tofile(output_file)
 
-        elif output_format == "rgb" and polygons:
-            # Initialize rgb_mask
+        elif output_format == "rgb":
             color_mask = np.zeros(
                 (image_height, image_width, 3), dtype=np.uint8
             )
-            polygons.sort(
-                key=lambda x: cv2.contourArea(np.array(x["polygon"])),
-                reverse=True,
-            )
-
             for item in polygons:
                 label, polygon = item["label"], item["polygon"]
                 if label in mapping_color:
                     color = mapping_color[label]
-                    # Create mask for current polygon
                     curr_mask = np.zeros(image_shape[:2], dtype=np.uint8)
                     cv2.fillPoly(
                         curr_mask, [np.array(polygon, dtype=np.int32)], 1
                     )
-                    # Only update pixels that haven't been assigned yet
                     unassigned = np.all(color_mask == 0, axis=2)
                     color_mask[curr_mask.astype(bool) & unassigned] = color
-
             cv2.imencode(".png", cv2.cvtColor(color_mask, cv2.COLOR_BGR2RGB))[
                 1
             ].tofile(output_file)
