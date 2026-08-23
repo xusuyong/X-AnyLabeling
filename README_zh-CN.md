@@ -18,7 +18,7 @@
     <a href="https://modelscope.cn/collections/X-AnyLabeling-7b0e1798bcda43"><img src="https://img.shields.io/badge/modelscope-X--AnyLabeling-6750FF?link=https%3A%2F%2Fmodelscope.cn%2Fcollections%2FX-AnyLabeling-7b0e1798bcda43"></a>
 </p>
 
-<img src="https://github.com/user-attachments/assets/1480908f-b0d5-4e94-ac36-9cdc09f01fa8" alt="X-AnyLabeling 界面" width="100%" />
+<img src="https://github.com/user-attachments/assets/aa819dae-e38c-4b1c-a4a7-53a873d870e3" alt="X-AnyLabeling 界面" width="100%" />
 
 ## 🥳 新功能
 

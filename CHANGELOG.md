@@ -1,5 +1,29 @@
 # X-AnyLabeling Changelog
 
+## `v4.0.3` (Aug 23, 2026)
+
+X-AnyLabeling 4.0.3 adds image-level tagging and improves annotation precision, chatbot provider switching, and overlapping mask exports.
+
+### 🚀 New Features
+
+- Add image-level tag creation, editing, reordering, batch deletion, copy-all, and auto-labeling support. (#1320)
+
+### 🐛 Bug Fixes
+
+- Refine canvas selection and keyboard movement for precise annotation adjustments, and restore shape fill after transforms. (#1429)
+- Restore editable custom model names when switching chatbot providers. (#1430)
+- Honor label priority and shape layer order when exporting overlapping segmentation masks. (#1431)
+
+### 🛠️ Improvements
+
+- Refresh the interface preview in the English and Chinese README files.
+
+### 🌟 Contributors
+
+A total of 2 developers contributed to this release.
+
+Thank @zhixuwei, @CVHub520
+
 ## `v4.0.2` (Aug 12, 2026)
 
 X-AnyLabeling 4.0.2 expands auto-labeling with new detection and segmentation models and improves YOLO export diagnostics.
