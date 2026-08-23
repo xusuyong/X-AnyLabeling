@@ -401,6 +401,7 @@ class LabelingWidget(LabelDialog):
 
         self.canvas = self.label_list.canvas = Canvas(
             parent=self,
+            label_font_size=self._config["canvas"]["label_font_size"],
             epsilon=self._config["canvas"]["epsilon"],
             double_click=self._config["canvas"]["double_click"],
             num_backups=self._config["canvas"]["num_backups"],

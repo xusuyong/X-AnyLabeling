@@ -50,6 +50,35 @@ class TestSettingsRuntimeApplier(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(self.app.font().family(), self.original_font.family())
 
+    def test_label_font_size_applies_without_restart(self):
+        canvas = SimpleNamespace(
+            label_font_size=8,
+            epsilon=10.0,
+            double_click="close",
+            double_click_edit_label=True,
+            num_backups=10,
+            update=Mock(),
+        )
+        widget = SimpleNamespace(
+            canvas=canvas,
+            _config={
+                "canvas": {
+                    "label_font_size": 12,
+                    "epsilon": 10.0,
+                    "double_click": "close",
+                    "double_click_edit_label": True,
+                    "num_backups": 10,
+                }
+            },
+        )
+
+        SettingsRuntimeApplier(widget).apply_change(
+            "canvas.label_font_size", 12
+        )
+
+        self.assertEqual(canvas.label_font_size, 12)
+        canvas.update.assert_called_once_with()
+
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for runtime tests")
 class TestMagicWandSettingsRuntimeApplier(unittest.TestCase):

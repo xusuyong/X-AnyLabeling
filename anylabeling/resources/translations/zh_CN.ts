@@ -7416,6 +7416,26 @@ Changes will not be saved until you click Save.</source>
       <translation>缩放步长</translation>
     </message>
     <message>
+      <location filename="../../views/labeling/settings/schema.py" line="103" />
+      <source>Rendering</source>
+      <translation>渲染</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="104" />
+      <source>Labels</source>
+      <translation>标签</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="105" />
+      <source>Label Font Size</source>
+      <translation>标签字号</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="107" />
+      <source>Set the on-screen font size of annotation labels.</source>
+      <translation>设置标注标签在屏幕上的字号。</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/schema.py" line="102" />
       <location filename="../../views/labeling/settings/schema.py" line="103" />
       <source>Show Crosshair</source>

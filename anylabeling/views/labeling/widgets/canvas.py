@@ -87,6 +87,7 @@ class Canvas(
     _fill_drawing = False
 
     def __init__(self, *args, **kwargs):
+        self.label_font_size = kwargs.pop("label_font_size", 8)
         self.epsilon = kwargs.pop("epsilon", 10.0)
         self.double_click = kwargs.pop("double_click", "close")
         if self.double_click not in [None, "close"]:
@@ -3107,7 +3108,7 @@ class Canvas(
 
     def _group_label_font(self):
         font = QtGui.QFont("Arial")
-        font.setPointSizeF(8.0 / self.scale)
+        font.setPointSizeF(self.label_font_size / self.scale)
         return font
 
     def _group_label_rect(self, group_id, shape_count, group_rect):
@@ -4377,7 +4378,7 @@ class Canvas(
             label_transform = p.transform()
             p.save()
             p.resetTransform()
-            p.setFont(QtGui.QFont("Arial", 8))
+            p.setFont(QtGui.QFont("Arial", self.label_font_size))
             labels = []
             for shape in self.shapes:
                 if not shape.visible:
@@ -4748,7 +4749,9 @@ class Canvas(
         show_masks=True,
     ):
         old_shape_scale = Shape.scale
-        scratch = type(self)(parent=self.parent)
+        scratch = type(self)(
+            parent=self.parent, label_font_size=self.label_font_size
+        )
         scratch.resize(pixmap.size())
         scratch.pixmap = pixmap
         scratch.shapes = list(shapes)

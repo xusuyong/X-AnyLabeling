@@ -100,6 +100,12 @@ def _settings_translation_markers() -> None:
     )
     QCoreApplication.translate("SettingsDialog", "Adjust Step")
     QCoreApplication.translate("SettingsDialog", "Scale Step")
+    QCoreApplication.translate("SettingsDialog", "Rendering")
+    QCoreApplication.translate("SettingsDialog", "Labels")
+    QCoreApplication.translate("SettingsDialog", "Label Font Size")
+    QCoreApplication.translate(
+        "SettingsDialog", "Set the on-screen font size of annotation labels."
+    )
     QCoreApplication.translate("SettingsDialog", "Show Crosshair")
     QCoreApplication.translate("SettingsDialog", "Crosshair Width")
     QCoreApplication.translate("SettingsDialog", "Crosshair Color")
@@ -1180,6 +1186,20 @@ def _non_shortcut_fields() -> list[SettingField]:
             description=QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT,
                 "Set the opacity used when rendering masks.",
+            ),
+        ),
+        SettingField(
+            "canvas.label_font_size",
+            QT_TRANSLATE_NOOP(SETTINGS_TRANSLATION_CONTEXT, "Label Font Size"),
+            "int",
+            "Canvas",
+            "Rendering",
+            "Labels",
+            minimum=6,
+            maximum=48,
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "Set the on-screen font size of annotation labels.",
             ),
         ),
         SettingField(

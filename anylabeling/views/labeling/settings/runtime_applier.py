@@ -217,6 +217,7 @@ class SettingsRuntimeApplier:
             apply_application_font(value)
             return
         if key in {
+            "canvas.label_font_size",
             "canvas.epsilon",
             "canvas.double_click",
             "canvas.double_click_edit_label",
@@ -306,6 +307,9 @@ class SettingsRuntimeApplier:
         logger.debug("No runtime handler for settings key: %s", key)
 
     def apply_canvas_basic(self) -> None:
+        self._widget.canvas.label_font_size = int(
+            self._widget._config["canvas"]["label_font_size"]
+        )
         self._widget.canvas.epsilon = float(
             self._widget._config["canvas"]["epsilon"]
         )

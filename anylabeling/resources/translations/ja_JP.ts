@@ -7416,6 +7416,26 @@ Changes will not be saved until you click Save.</source>
       <translation>スケールステップ</translation>
     </message>
     <message>
+      <location filename="../../views/labeling/settings/schema.py" line="103" />
+      <source>Rendering</source>
+      <translation>レンダリング</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="104" />
+      <source>Labels</source>
+      <translation>ラベル</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="105" />
+      <source>Label Font Size</source>
+      <translation>ラベルのフォントサイズ</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="107" />
+      <source>Set the on-screen font size of annotation labels.</source>
+      <translation>アノテーションラベルの画面上のフォントサイズを設定します。</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/schema.py" line="102" />
       <location filename="../../views/labeling/settings/schema.py" line="103" />
       <source>Show Crosshair</source>

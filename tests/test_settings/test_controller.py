@@ -111,6 +111,21 @@ class TestSettingsController(unittest.TestCase):
             )
 
     def test_canvas_field_validation(self):
+        self.assertEqual(
+            self.controller.get_value("canvas.label_font_size"), 8
+        )
+        self.controller.update_field(
+            "canvas.label_font_size", 12, schedule_save=False
+        )
+        with self.assertRaises(SettingsValidationError):
+            self.controller.update_field(
+                "canvas.label_font_size", 5, schedule_save=False
+            )
+        with self.assertRaises(SettingsValidationError):
+            self.controller.update_field(
+                "canvas.label_font_size", 49, schedule_save=False
+            )
+
         self.controller.update_field(
             "canvas.crosshair.width",
             1.0,

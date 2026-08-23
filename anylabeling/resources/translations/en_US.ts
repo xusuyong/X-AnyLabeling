@@ -7394,6 +7394,26 @@ Changes will not be saved until you click Save.</translation>
       <translation type="unfinished" />
     </message>
     <message>
+      <location filename="../../views/labeling/settings/schema.py" line="103" />
+      <source>Rendering</source>
+      <translation>Rendering</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="104" />
+      <source>Labels</source>
+      <translation>Labels</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="105" />
+      <source>Label Font Size</source>
+      <translation>Label Font Size</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="107" />
+      <source>Set the on-screen font size of annotation labels.</source>
+      <translation>Set the on-screen font size of annotation labels.</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/schema.py" line="102" />
       <location filename="../../views/labeling/settings/schema.py" line="103" />
       <source>Show Crosshair</source>

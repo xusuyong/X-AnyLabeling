@@ -93,6 +93,23 @@ class TestSettingsDialogLayout(unittest.TestCase):
         self.assertEqual(bottom_margins.top(), 8)
         self.assertEqual(bottom_margins.bottom(), 8)
 
+    def test_canvas_label_font_size_editor_uses_supported_range(self):
+        dialog = self._create_dialog()
+        dialog._render_primary("Canvas")
+        self.app.processEvents()
+
+        spinbox = next(
+            editor
+            for editor in dialog.content_body.findChildren(QtWidgets.QSpinBox)
+            if editor.minimum() == 6 and editor.maximum() == 48
+        )
+        self.assertEqual(spinbox.value(), 8)
+
+        spinbox.setValue(12)
+        self.assertEqual(
+            dialog._controller.get_value("canvas.label_font_size"), 12
+        )
+
     def test_shape_uses_same_viewport_gap(self):
         dialog = self._create_dialog()
         dialog._render_primary("Shape")
