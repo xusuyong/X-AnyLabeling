@@ -1,5 +1,29 @@
 # X-AnyLabeling Changelog
 
+## `v4.0.4` (Aug 24, 2026)
+
+X-AnyLabeling 4.0.4 adds configurable canvas label sizing and improves terminal output and visual documentation.
+
+### 🚀 New Features
+
+- Add configurable label font size for canvas annotations. (#1415)
+
+### 🐛 Bug Fixes
+
+- Remove the outdated Baidu Cloud reference from generated release notes.
+
+### 🛠️ Improvements
+
+- Refresh the CLI startup banner and streamline terminal output.
+- Expand the English and Chinese guides with updated examples, visual walkthroughs, and a terminal launch preview.
+- Restore the Netron guide image.
+
+### 🌟 Contributors
+
+A total of 1 developer contributed to this release.
+
+Thank @CVHub520
+
 ## `v4.0.3` (Aug 23, 2026)
 
 X-AnyLabeling 4.0.3 adds image-level tagging and improves annotation precision, chatbot provider switching, and overlapping mask exports.
