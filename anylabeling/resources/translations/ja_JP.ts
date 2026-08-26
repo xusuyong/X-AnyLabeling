@@ -516,39 +516,6 @@ Review the prompt before generating.</source>
     </message>
   </context>
   <context>
-    <name>BrightnessContrastDialog</name>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="25" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="25" />
-      <source>Brightness/Contrast</source>
-      <translation>明るさ/コントラスト</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="62" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="62" />
-      <source>Reset</source>
-      <translation>リセット</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="67" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="67" />
-      <source>Confirm</source>
-      <translation>確認</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="77" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="77" />
-      <source>Brightness:</source>
-      <translation>明るさ：</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="79" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="79" />
-      <source>Contrast:</source>
-      <translation>コントラスト：</translation>
-    </message>
-  </context>
-  <context>
     <name>Canvas</name>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/widgets/canvas.py" line="244" />
@@ -1499,63 +1466,6 @@ Review the prompt before generating.</source>
       <location filename="../../views/labeling/vqa/dialogs.py" line="831" />
       <source>Duplicate options are not allowed!</source>
       <translation>重複するオプションは許可されていません！</translation>
-    </message>
-  </context>
-  <context>
-    <name>CrosshairSettingsDialog</name>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="23" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="23" />
-      <source>Crosshair Settings</source>
-      <translation>クロスヘア設定</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="40" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="40" />
-      <source>Show Crosshair:</source>
-      <translation>クロスヘアを表示：</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="51" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="51" />
-      <source>Line width:</source>
-      <translation>線幅：</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="73" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="73" />
-      <source>Line Opacity:</source>
-      <translation>線の不透明度：</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="98" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="98" />
-      <source>Line Color:</source>
-      <translation>線の色：</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="120" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="120" />
-      <source>Choose Color</source>
-      <translation>色を選択</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="134" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="134" />
-      <source>Reset</source>
-      <translation>リセット</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="138" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="138" />
-      <source>OK</source>
-      <translation>OK</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="142" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="142" />
-      <source>Cancel</source>
-      <translation>キャンセル</translation>
     </message>
   </context>
   <context>
@@ -3803,24 +3713,6 @@ Enter キーを押して検索します。</translation>
       <location filename="../../views/labeling/label_widget.py" line="1273" />
       <source>Zoom follows window width</source>
       <translation>ズームをウィンドウ幅に合わせる</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1264" />
-      <location filename="../../views/labeling/label_widget.py" line="1278" />
-      <source>Set Brightness Contrast</source>
-      <translation>明るさ/コントラストを設定</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1272" />
-      <location filename="../../views/labeling/label_widget.py" line="1286" />
-      <source>Set Cross Line</source>
-      <translation>クロスラインを設定</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1274" />
-      <location filename="../../views/labeling/label_widget.py" line="1288" />
-      <source>Adjust cross line for mouse position</source>
-      <translation>マウス位置のクロスラインを調整</translation>
     </message>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1278" />

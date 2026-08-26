@@ -353,14 +353,7 @@ To maintain the current zoom level when switching between images, enable `View` 
 
 ### 3.2 Image Display
 
-<p align="center">
-  <img src="../../assets/resources/brightness_contrast.png" alt="Brightness-Contrast">
-</p>
-
 X-AnyLabeling allows you to adjust the appearance of the current image and the visibility of annotations:
-
-- Select `View` > `Brightness Contrast` to open the adjustment controls.
-- To apply the current adjustments to all subsequent images in the session, enable `View` > `Keep Current Brightness` and `View` > `Keep Current Contrast`.
 
 Use the collapsible **Canvas Display** panel at the bottom-left of the canvas to adjust annotation opacity and the appearance of the underlying image. Click the caret button to collapse or expand the panel.
 
@@ -382,7 +375,7 @@ Use the collapsible **Canvas Display** panel at the bottom-left of the canvas to
   <img src="../../assets/resources/image_contrast.gif" alt="Adjusting image contrast from the Canvas Display panel">
 </p>
 
-The status bar at the bottom displays the current filename, annotation progress (e.g., "Image 5/100"), and cursor coordinates.
+To apply the current adjustments to all subsequent images in the session, enable `View` > `Keep Current Brightness` and `View` > `Keep Current Contrast`.
 
 ### 3.3 Shape Display
 
@@ -400,11 +393,9 @@ When you hover over a shape, its dimensions (width and height) are displayed in 
 
 ### 3.4 Crosshair Customization
 
-<p align="center">
-  <img src="../../assets/resources/crosshair.png" alt="Crosshair Customization">
-</p>
+Press `Ctrl+0` to open `Settings`, then go to `Canvas > Interaction > Crosshair` to show or hide the crosshair and configure its width, color, and opacity.
 
-You can customize the appearance (width, transparency, color) of the crosshair cursor via `View` > `Set Crosshair`. The status bar shows the cursor's real-time pixel coordinates.
+The crosshair spans the visible canvas and intersects at the cursor position. As the cursor moves, the status bar displays its pixel coordinates in real time.
 
 ### 3.5 Navigator
 

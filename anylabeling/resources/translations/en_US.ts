@@ -516,39 +516,6 @@ Review the prompt before generating.</translation>
     </message>
   </context>
   <context>
-    <name>BrightnessContrastDialog</name>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="25" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="25" />
-      <source>Brightness/Contrast</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="62" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="62" />
-      <source>Reset</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="67" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="67" />
-      <source>Confirm</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="77" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="77" />
-      <source>Brightness:</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/brightness_contrast_dialog.py" line="79" />
-      <location filename="../../views/labeling/widgets/brightness_contrast_dialog.py" line="79" />
-      <source>Contrast:</source>
-      <translation type="unfinished" />
-    </message>
-  </context>
-  <context>
     <name>Canvas</name>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/widgets/canvas.py" line="244" />
@@ -1497,63 +1464,6 @@ Review the prompt before generating.</translation>
       <location filename="../../../build/lib/anylabeling/views/labeling/vqa/dialogs.py" line="831" />
       <location filename="../../views/labeling/vqa/dialogs.py" line="831" />
       <source>Duplicate options are not allowed!</source>
-      <translation type="unfinished" />
-    </message>
-  </context>
-  <context>
-    <name>CrosshairSettingsDialog</name>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="23" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="23" />
-      <source>Crosshair Settings</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="40" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="40" />
-      <source>Show Crosshair:</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="51" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="51" />
-      <source>Line width:</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="73" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="73" />
-      <source>Line Opacity:</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="98" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="98" />
-      <source>Line Color:</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="120" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="120" />
-      <source>Choose Color</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="134" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="134" />
-      <source>Reset</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="138" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="138" />
-      <source>OK</source>
-      <translation type="unfinished" />
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/widgets/crosshair_settings_dialog.py" line="142" />
-      <location filename="../../views/labeling/widgets/crosshair_settings_dialog.py" line="142" />
-      <source>Cancel</source>
       <translation type="unfinished" />
     </message>
   </context>
@@ -3787,24 +3697,6 @@ Press Enter to search.</source>
       <location filename="../../views/labeling/label_widget.py" line="1273" />
       <source>Zoom follows window width</source>
       <translation>Zoom follows window width</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1264" />
-      <location filename="../../views/labeling/label_widget.py" line="1278" />
-      <source>Set Brightness Contrast</source>
-      <translation>Set Brightness Contrast</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1272" />
-      <location filename="../../views/labeling/label_widget.py" line="1286" />
-      <source>Set Cross Line</source>
-      <translation>Set Cross Line</translation>
-    </message>
-    <message>
-      <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1274" />
-      <location filename="../../views/labeling/label_widget.py" line="1288" />
-      <source>Adjust cross line for mouse position</source>
-      <translation>Adjust cross line for mouse position</translation>
     </message>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1278" />
