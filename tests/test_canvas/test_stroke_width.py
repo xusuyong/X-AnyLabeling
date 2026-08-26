@@ -61,3 +61,21 @@ class TestCanvasStrokeWidth(unittest.TestCase):
         self.assertEqual(pen.widthF(), 0.5)
         self.assertTrue(pen.isCosmetic())
         canvas.close()
+
+    def test_crosshair_rect_covers_canvas_outside_pixmap(self):
+        canvas = Canvas(parent=None)
+        canvas.resize(200, 160)
+        canvas.pixmap = QtGui.QPixmap(50, 40)
+        canvas.scale = 2.0
+
+        rect = canvas._cross_line_rect()
+
+        self.assertEqual(rect, QtCore.QRectF(-25.0, -20.0, 100.0, 80.0))
+        for point in (
+            QtCore.QPointF(-10.0, 20.0),
+            QtCore.QPointF(60.0, 20.0),
+            QtCore.QPointF(20.0, -10.0),
+            QtCore.QPointF(20.0, 50.0),
+        ):
+            self.assertTrue(rect.contains(point))
+        canvas.close()

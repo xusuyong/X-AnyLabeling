@@ -4499,15 +4499,16 @@ class Canvas(
         # Draw mouse coordinates
         if self.cross_line_show:
             pen = self._cross_line_pen()
+            rect = self._cross_line_rect()
             p.setPen(pen)
             p.setOpacity(self.cross_line_opacity)
             p.drawLine(
-                QtCore.QPointF(self.prev_move_point.x(), 0),
-                QtCore.QPointF(self.prev_move_point.x(), self.pixmap.height()),
+                QtCore.QPointF(self.prev_move_point.x(), rect.top()),
+                QtCore.QPointF(self.prev_move_point.x(), rect.bottom()),
             )
             p.drawLine(
-                QtCore.QPointF(0, self.prev_move_point.y()),
-                QtCore.QPointF(self.pixmap.width(), self.prev_move_point.y()),
+                QtCore.QPointF(rect.left(), self.prev_move_point.y()),
+                QtCore.QPointF(rect.right(), self.prev_move_point.y()),
             )
 
         # Draw attributes
@@ -5465,6 +5466,12 @@ class Canvas(
         pen.setStyle(Qt.PenStyle.DashLine)
         pen.setCosmetic(True)
         return pen
+
+    def _cross_line_rect(self) -> QtCore.QRectF:
+        return QtCore.QRectF(
+            self.transform_pos(QtCore.QPointF()),
+            self.transform_pos(QtCore.QPointF(self.width(), self.height())),
+        )
 
     def gen_new_group_id(self):
         """Generate new shape's group_id based on current shapes"""
