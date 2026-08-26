@@ -78,7 +78,6 @@ from .widgets import (
     CompareViewManager,
     CompareViewSlider,
     VQADialog,
-    CrosshairSettingsDialog,
     FileDialogPreview,
     PPOCRDialog,
     VideoClassifierDialog,
@@ -2616,6 +2615,7 @@ class LabelingWidget(LabelDialog):
             apply_callback=self._settings_runtime_applier.apply_change,
             parent=self,
             defer_runtime_apply=True,
+            preview_keys={"shape.line_width", "canvas.crosshair.width"},
         )
         self._settings_runtime_applier.build_shortcut_action_map()
 
@@ -5752,15 +5752,7 @@ class LabelingWidget(LabelDialog):
         self.adjust_scale()
 
     def set_cross_line(self):
-        crosshair_dialog = CrosshairSettingsDialog(**self.crosshair_settings)
-        if crosshair_dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            crosshair_settings = crosshair_dialog.get_settings()
-            show = crosshair_settings["show"]
-            width = crosshair_settings["width"]
-            color = crosshair_settings["color"]
-            opacity = crosshair_settings["opacity"]
-            self.canvas.set_cross_line(show, width, color, opacity)
-            self._config["canvas"]["crosshair"] = crosshair_settings
+        self.open_settings_dialog(field_key="canvas.crosshair.show")
 
     def set_canvas_params(self, key, value):
         self._config[key] = value
@@ -5768,13 +5760,15 @@ class LabelingWidget(LabelDialog):
         setattr(self.canvas, key, value)
         self.canvas.update()
 
-    def open_settings_dialog(self):
+    def open_settings_dialog(self, _checked=False, field_key=None):
         if self._settings_controller is None:
             return
         if self._settings_dialog is None:
             self._settings_dialog = SettingsDialog(
                 self, self._settings_controller
             )
+        if field_key is not None:
+            self._settings_dialog.show_field(field_key)
         self._settings_dialog.show()
         self._settings_dialog.raise_()
         self._settings_dialog.activateWindow()

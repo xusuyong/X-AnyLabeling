@@ -53,15 +53,15 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
         width_layout.addWidget(self.width_label)
 
         self.width_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-        self.width_slider.setMinimum(10)
-        self.width_slider.setMaximum(100)
-        self.width_slider.setValue(int(self._width * 10))
+        self.width_slider.setMinimum(1)
+        self.width_slider.setMaximum(20)
+        self.width_slider.setValue(int(round(self._width * 2)))
         self.width_slider.setTickInterval(1)
         width_layout.addWidget(self.width_slider)
 
         self.width_spinbox = QtWidgets.QDoubleSpinBox()
-        self.width_spinbox.setRange(1.0, 10.0)
-        self.width_spinbox.setSingleStep(0.1)
+        self.width_spinbox.setRange(0.5, 10.0)
+        self.width_spinbox.setSingleStep(0.5)
         self.width_spinbox.setValue(self._width)
         self.width_spinbox.setFixedWidth(68)
         self.width_spinbox.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
@@ -202,10 +202,10 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
         self.move(qr.topLeft())
 
     def update_width_slider(self, value):
-        self.width_slider.setValue(int(value * 10))
+        self.width_slider.setValue(int(round(value * 2)))
 
     def update_width_spinbox(self, value):
-        self.width_spinbox.setValue(value / 10.0)
+        self.width_spinbox.setValue(value / 2.0)
 
     def update_opacity_slider(self, value):
         self.opacity_slider.setValue(int(value * 100))
@@ -220,7 +220,7 @@ class CrosshairSettingsDialog(QtWidgets.QDialog):
 
     def reset_settings(self):
         self.show_checkbox.setChecked(self._show)
-        self.width_slider.setValue(int(self._width * 100))
+        self.width_slider.setValue(int(round(self._width * 2)))
         self.width_spinbox.setValue(self._width)
         self.color_lineedit.setText(self._color)
         self.opacity_slider.setValue(int(self._opacity * 100))

@@ -1431,9 +1431,8 @@ class Canvas(
                     else shape.line_color
                 )
                 pen = QtGui.QPen(outline_color)
-                pen.setWidth(
-                    max(1, int(round(shape.line_width / Shape.scale)))
-                )
+                pen.setWidthF(float(shape.line_width))
+                pen.setCosmetic(True)
                 if getattr(shape, "difficult", False):
                     pen.setStyle(Qt.PenStyle.DashLine)
                 p.setPen(pen)
@@ -1490,7 +1489,7 @@ class Canvas(
         _, handle, _ = geometry
         scale = max(self.scale, 1e-6)
         vertex_radius = Shape.point_size / (2.0 * scale)
-        vertex_pen_width = max(1.0 / scale, float(shape.line_width) / scale)
+        vertex_pen_width = float(shape.line_width) / scale
         radius = vertex_radius + vertex_pen_width / 2.0
         hovered = shape in (self.h_rotation_shape, self._rotation_drag_shape)
         ring_width = (vertex_pen_width / 2.0) * (2.2 if hovered else 1.0)
@@ -4168,9 +4167,8 @@ class Canvas(
                     else shape.line_color
                 )
                 pen = QtGui.QPen(outline_color)
-                pen.setWidth(
-                    max(1, int(round(shape.line_width / Shape.scale)))
-                )
+                pen.setWidthF(float(shape.line_width))
+                pen.setCosmetic(True)
                 if shape.difficult:
                     pen.setStyle(Qt.PenStyle.DashLine)
                 p.setPen(pen)
@@ -4273,9 +4271,8 @@ class Canvas(
                     else self.current.line_color
                 )
                 pen = QtGui.QPen(color)
-                pen.setWidth(
-                    max(1, int(round(self.current.line_width / Shape.scale)))
-                )
+                pen.setWidthF(float(self.current.line_width))
+                pen.setCosmetic(True)
                 p.setPen(pen)
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawLine(QtCore.QLineF(self.line[1], self.current.points[0]))
@@ -4501,11 +4498,7 @@ class Canvas(
 
         # Draw mouse coordinates
         if self.cross_line_show:
-            pen = QtGui.QPen(
-                QtGui.QColor(self.cross_line_color),
-                max(1, int(round(self.cross_line_width / Shape.scale))),
-                Qt.PenStyle.DashLine,
-            )
+            pen = self._cross_line_pen()
             p.setPen(pen)
             p.setOpacity(self.cross_line_opacity)
             p.drawLine(
@@ -5465,6 +5458,13 @@ class Canvas(
         self.cross_line_color = color
         self.cross_line_opacity = opacity
         self.update()
+
+    def _cross_line_pen(self) -> QtGui.QPen:
+        pen = QtGui.QPen(QtGui.QColor(self.cross_line_color))
+        pen.setWidthF(float(self.cross_line_width))
+        pen.setStyle(Qt.PenStyle.DashLine)
+        pen.setCosmetic(True)
+        return pen
 
     def gen_new_group_id(self):
         """Generate new shape's group_id based on current shapes"""

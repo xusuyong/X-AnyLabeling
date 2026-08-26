@@ -376,6 +376,7 @@ class SettingField:
     allow_none: bool = False
     channels: int = 0
     description: str | None = None
+    single_step: float | None = None
 
 
 @lru_cache(maxsize=1)
@@ -774,12 +775,14 @@ def _non_shortcut_fields() -> list[SettingField]:
         SettingField(
             "shape.line_width",
             QT_TRANSLATE_NOOP(SETTINGS_TRANSLATION_CONTEXT, "Line Width"),
-            "int",
+            "float",
             "Shape",
             "Geometry",
             "Basic",
-            minimum=1,
-            maximum=20,
+            minimum=0.5,
+            maximum=20.0,
+            decimals=1,
+            single_step=0.5,
             description=QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT,
                 "Control the default stroke width for shapes.",
@@ -908,9 +911,10 @@ def _non_shortcut_fields() -> list[SettingField]:
             "Canvas",
             "Interaction",
             "Crosshair",
-            minimum=1.0,
+            minimum=0.5,
             maximum=10.0,
             decimals=1,
+            single_step=0.5,
             description=QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT,
                 "Set the stroke width of the crosshair guides.",

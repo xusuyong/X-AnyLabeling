@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PyQt6 import QtGui, QtWidgets
 
+    from anylabeling.views.labeling.shape import Shape
     from anylabeling.views.labeling.settings.runtime_applier import (
         SettingsRuntimeApplier,
     )
@@ -78,6 +79,51 @@ class TestSettingsRuntimeApplier(unittest.TestCase):
 
         self.assertEqual(canvas.label_font_size, 12)
         canvas.update.assert_called_once_with()
+
+    def test_width_previews_use_pending_values(self):
+        config = {
+            "shape": {
+                "line_color": [0, 255, 0, 128],
+                "fill_color": [0, 255, 0, 128],
+                "vertex_fill_color": [0, 255, 0, 255],
+                "select_line_color": [255, 255, 255, 255],
+                "select_fill_color": [0, 255, 0, 155],
+                "hvertex_fill_color": [255, 255, 255, 255],
+                "point_size": 4,
+                "line_width": 4,
+            },
+            "canvas": {
+                "crosshair": {
+                    "show": True,
+                    "width": 2.0,
+                    "color": "#00FF00",
+                    "opacity": 0.5,
+                }
+            },
+        }
+        canvas = SimpleNamespace(
+            set_cross_line=Mock(), update=Mock(), shapes=[]
+        )
+        widget = SimpleNamespace(
+            canvas=canvas,
+            _config=config,
+            crosshair_settings=dict(config["canvas"]["crosshair"]),
+        )
+        applier = SettingsRuntimeApplier(widget)
+        original_line_width = Shape.line_width
+
+        try:
+            applier.apply_change("shape.line_width", 0.5)
+            self.assertEqual(applier._widget.canvas.update.call_count, 1)
+            self.assertEqual(Shape.line_width, 0.5)
+
+            applier.apply_change("canvas.crosshair.width", 0.5)
+            canvas.set_cross_line.assert_called_once_with(
+                True, 0.5, "#00FF00", 0.5
+            )
+            self.assertEqual(widget.crosshair_settings["width"], 0.5)
+        finally:
+            Shape.line_width = original_line_width
 
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for runtime tests")

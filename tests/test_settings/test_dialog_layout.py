@@ -131,6 +131,30 @@ class TestSettingsDialogLayout(unittest.TestCase):
         self.assertEqual(bottom_margins.top(), 8)
         self.assertEqual(bottom_margins.bottom(), 8)
 
+    def test_line_width_editors_use_half_pixel_steps(self):
+        dialog = self._create_dialog()
+        dialog._render_primary("Shape")
+        self.app.processEvents()
+
+        shape_width = dialog.content_body.findChildren(
+            QtWidgets.QDoubleSpinBox
+        )[0]
+        self.assertEqual(shape_width.minimum(), 0.5)
+        self.assertEqual(shape_width.maximum(), 20.0)
+        self.assertEqual(shape_width.singleStep(), 0.5)
+
+        dialog.show_field("canvas.crosshair.width")
+        self.app.processEvents()
+        crosshair_width = next(
+            editor
+            for editor in dialog.content_body.findChildren(
+                QtWidgets.QDoubleSpinBox
+            )
+            if editor.minimum() == 0.5 and editor.maximum() == 10.0
+        )
+        self.assertEqual(dialog._active_primary, "Canvas")
+        self.assertEqual(crosshair_width.singleStep(), 0.5)
+
     def test_general_titles_remain_english_while_descriptions_translate(self):
         with mock.patch.object(
             SettingsDialog,

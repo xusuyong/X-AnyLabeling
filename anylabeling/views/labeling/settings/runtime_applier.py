@@ -229,7 +229,7 @@ class SettingsRuntimeApplier:
             self.apply_canvas_wheel_edit()
             return
         if key.startswith("canvas.crosshair."):
-            self.apply_canvas_crosshair()
+            self.apply_canvas_crosshair(key, value)
             return
         if key.startswith("canvas.brush."):
             self.apply_canvas_brush()
@@ -258,7 +258,7 @@ class SettingsRuntimeApplier:
             "shape_color",
             "default_shape_color",
         }:
-            self.apply_shape_style(key)
+            self.apply_shape_style(key, value)
             return
         if (
             key.startswith("flag_dock.")
@@ -337,15 +337,21 @@ class SettingsRuntimeApplier:
         )
         self._widget.canvas.rect_scale_step = float(wheel_config["scale_step"])
 
-    def apply_canvas_crosshair(self) -> None:
+    def apply_canvas_crosshair(self, key: str = "", value: Any = None) -> None:
         crosshair = self._widget._config["canvas"]["crosshair"]
+        width = (
+            value
+            if key == "canvas.crosshair.width" and value is not None
+            else crosshair["width"]
+        )
         self._widget.canvas.set_cross_line(
             bool(crosshair["show"]),
-            float(crosshair["width"]),
+            float(width),
             str(crosshair["color"]),
             float(crosshair["opacity"]),
         )
         self._widget.crosshair_settings = dict(crosshair)
+        self._widget.crosshair_settings["width"] = float(width)
 
     def apply_canvas_brush(self) -> None:
         brush = self._widget._config["canvas"]["brush"]
@@ -416,7 +422,7 @@ class SettingsRuntimeApplier:
         )
         self._widget.canvas.update()
 
-    def apply_shape_style(self, key: str) -> None:
+    def apply_shape_style(self, key: str, value: Any = None) -> None:
         shape_config = self._widget._config["shape"]
         Shape.line_color = QtGui.QColor(*shape_config["line_color"])
         Shape.fill_color = QtGui.QColor(*shape_config["fill_color"])
@@ -433,7 +439,12 @@ class SettingsRuntimeApplier:
             *shape_config["hvertex_fill_color"]
         )
         Shape.point_size = int(shape_config["point_size"])
-        Shape.line_width = float(shape_config["line_width"])
+        line_width = (
+            value
+            if key == "shape.line_width" and value is not None
+            else shape_config["line_width"]
+        )
+        Shape.line_width = float(line_width)
 
         strategy_keys = {"shape_color", "default_shape_color"}
         if key in strategy_keys:
