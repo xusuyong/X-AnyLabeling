@@ -134,13 +134,17 @@ def _find_next_label_loop_shape(shapes, start_index, canvas_shapes):
     return len(shapes), None
 
 
-def _create_file_status_icon(color):
+def _create_file_status_icon(color, filled=True):
     pixmap = QtGui.QPixmap(12, 12)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QtGui.QPainter(pixmap)
     painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QtGui.QColor(color))
-    painter.setPen(Qt.PenStyle.NoPen)
+    if filled:
+        painter.setBrush(QtGui.QColor(color))
+        painter.setPen(Qt.PenStyle.NoPen)
+    else:
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QtGui.QPen(QtGui.QColor(color), 1.5))
     painter.drawEllipse(2, 2, 8, 8)
     painter.end()
     return QtGui.QIcon(pixmap)
@@ -352,7 +356,9 @@ class LabelingWidget(LabelDialog):
         self.file_list_widget.setIconSize(QtCore.QSize(12, 12))
         self.file_status_icons = {
             True: _create_file_status_icon(FILE_CHECKED_COLOR),
-            False: _create_file_status_icon(FILE_UNCHECKED_COLOR),
+            False: _create_file_status_icon(
+                FILE_UNCHECKED_COLOR, filled=False
+            ),
         }
         self.file_list_widget.itemSelectionChanged.connect(
             self.file_selection_changed
@@ -2972,11 +2978,17 @@ class LabelingWidget(LabelDialog):
             current_index, total_count = self.get_image_progress_info()
             basename = osp.basename(str(self.filename))
             dirty_marker = "*" if self.dirty else ""
+            checked_status = (
+                self.tr("Checked")
+                if self._annotation_checked()
+                else self.tr("Unchecked")
+            )
             image_size = ""
             if hasattr(self, "image") and not self.image.isNull():
                 image_size = f" [{self.image.width()}x{self.image.height()}]"
             title = (
-                f"{title} - {basename}{dirty_marker}{image_size} "
+                f"{title} - {basename}{dirty_marker} [{checked_status}]"
+                f"{image_size} "
                 f"[{current_index}/{total_count}]"
             )
         return title
@@ -3976,6 +3988,7 @@ class LabelingWidget(LabelDialog):
     def _sync_annotation_checked_state(self):
         self._update_annotation_checked_action()
         self._update_current_file_checked_item()
+        self.update_progress_title()
 
     def set_annotation_checked(self, checked):
         if self.filename is None or self.image.isNull():
