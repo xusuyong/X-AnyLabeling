@@ -1,5 +1,30 @@
 # X-AnyLabeling Changelog
 
+## `v4.0.5` (Aug 28, 2026)
+
+X-AnyLabeling 4.0.5 improves nested YOLO dataset handling, refines canvas and review visuals, and hardens Windows builds.
+
+### 🚀 New Features
+
+- Preserve nested image directory structures when importing and exporting YOLO annotations, with export path validation and collision detection. (#806)
+
+### 🐛 Bug Fixes
+
+- Make annotation stroke widths precise and zoom-independent, and extend the crosshair across the visible canvas. (#1436)
+- Resolve missing Conda DLLs in PyInstaller-based Windows builds. (#1437)
+
+### 🛠️ Improvements
+
+- Remove redundant brightness, contrast, and crosshair menu actions after consolidating their controls in settings.
+- Refine selected-label styling and review status indicators, and show the current checked state in the window title. (#1439)
+- Refresh the English and Chinese README links and event banner.
+
+### 🌟 Contributors
+
+A total of 1 developer contributed to this release.
+
+Thank @CVHub520
+
 ## `v4.0.4` (Aug 24, 2026)
 
 X-AnyLabeling 4.0.4 adds configurable canvas label sizing and improves terminal output and visual documentation.
