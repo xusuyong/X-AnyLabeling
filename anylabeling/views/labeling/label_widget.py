@@ -4071,7 +4071,7 @@ class LabelingWidget(LabelDialog):
     def _file_item_annotation_checked(self, item):
         return item.data(Qt.ItemDataRole.UserRole) is True
 
-    def _create_file_list_item(self, file, has_label, is_checked):
+    def _create_file_list_item(self, file, has_label=False, is_checked=False):
         """从预扫描结果直接创建 item，无磁盘 I/O。"""
         item = QtWidgets.QListWidgetItem(file)
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
@@ -4086,26 +4086,22 @@ class LabelingWidget(LabelDialog):
         return item
 
     def _on_scan_finished(self, results):
-        """后台扫描完成后，在主线程批量填充文件列表（暂停重绘，一次性插入）。"""
+        """后台扫描完成后，在主线程更新已有列表项的标注状态与图标。"""
         self.file_list_widget.setUpdatesEnabled(False)
         try:
-            items = []
             for filename, _label_file, has_label, is_checked in results:
-                item = self._create_file_list_item(
-                    filename, has_label, is_checked
-                )
-                items.append(item)
-
-            for idx, item in enumerate(items):
-                self.file_list_widget.addItem(item)
-                self.fn_to_index[item.text()] = idx
+                idx = self.fn_to_index.get(filename)
+                if idx is not None:
+                    item = self.file_list_widget.item(idx)
+                    if item:
+                        item.setCheckState(
+                            Qt.CheckState.Checked
+                            if has_label
+                            else Qt.CheckState.Unchecked
+                        )
+                        self._set_file_item_checked(item, is_checked)
         finally:
             self.file_list_widget.setUpdatesEnabled(True)
-
-        # 加载第一张图
-        self._post_import_actions(
-            [r[0] for r in results], self._pending_load_after_scan
-        )
 
     def _post_import_actions(self, image_files, load=True):
         self.actions.open_next_image.setEnabled(True)
@@ -6933,7 +6929,27 @@ class LabelingWidget(LabelDialog):
         if not file_label_pairs:
             return
 
-        self._pending_load_after_scan = True
+        start_idx = self.file_list_widget.count()
+        self.file_list_widget.setUpdatesEnabled(False)
+        try:
+            for i, (file, _) in enumerate(file_label_pairs):
+                item = self._create_file_list_item(
+                    file, has_label=False, is_checked=False
+                )
+                self.file_list_widget.addItem(item)
+                self.fn_to_index[file] = start_idx + i
+        finally:
+            self.file_list_widget.setUpdatesEnabled(True)
+
+        if len(self.image_list) > 1:
+            self.actions.open_next_image.setEnabled(True)
+            self.actions.open_prev_image.setEnabled(True)
+            self.actions.open_next_unchecked_image.setEnabled(True)
+            self.actions.open_prev_unchecked_image.setEnabled(True)
+
+        self.toggle_actions(True)
+        self.open_next_image()
+
         if self._scan_worker is not None and self._scan_worker.isRunning():
             self._scan_worker.cancel()   # ← 优雅取消
             self._scan_worker.wait()
@@ -6993,8 +7009,23 @@ class LabelingWidget(LabelDialog):
             self.open_next_image(load=load)
             return
 
-        # 统一走后台异步扫描：无论文件多少，主线程不阻塞
-        self._pending_load_after_scan = load
+        # 立即在主线程批量填充列表项与索引（暂停重绘，极快完成，保证 fn_to_index 和 image_list 立即可用）
+        self.file_list_widget.setUpdatesEnabled(False)
+        try:
+            for idx, (filename, _) in enumerate(file_label_pairs):
+                item = self._create_file_list_item(
+                    filename, has_label=False, is_checked=False
+                )
+                self.file_list_widget.addItem(item)
+                self.fn_to_index[filename] = idx
+        finally:
+            self.file_list_widget.setUpdatesEnabled(True)
+
+        self._post_import_actions(
+            [p[0] for p in file_label_pairs], load=load
+        )
+
+        # 后台子线程并发扫描磁盘上的 label 文件真实状态，完成后更新列表中各项的勾选框与图标
         if self._scan_worker is not None and self._scan_worker.isRunning():
             self._scan_worker.cancel()   # ← 优雅取消
             self._scan_worker.wait()
