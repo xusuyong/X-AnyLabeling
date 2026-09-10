@@ -140,6 +140,7 @@ _AUTO_LABELING_MASK_FINENESS_MODELS = [
     "edge_sam",
     "rfdetr_seg",
     "dfine_seg",
+    "yolo_ultralytics",
 ]
 
 
