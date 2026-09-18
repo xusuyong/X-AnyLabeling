@@ -198,12 +198,15 @@ def get_config(
     if not config_file_or_yaml:
         config_file_or_yaml = current_config_file
 
-    config_from_yaml = yaml.safe_load(config_file_or_yaml)
-    if not isinstance(config_from_yaml, dict):
-        with open(config_file_or_yaml, encoding="utf-8") as f:
-            config_from_yaml = yaml.safe_load(f)
-    config_from_yaml = normalize_user_config(config_from_yaml)
-    update_dict(config, config_from_yaml, validate_item=validate_config_item)
+    config_from_yaml = None
+    if config_file_or_yaml:
+        config_from_yaml = yaml.safe_load(config_file_or_yaml)
+        if not isinstance(config_from_yaml, dict) and osp.exists(config_file_or_yaml):
+            with open(config_file_or_yaml, encoding="utf-8") as f:
+                config_from_yaml = yaml.safe_load(f)
+    if config_from_yaml:
+        config_from_yaml = normalize_user_config(config_from_yaml)
+        update_dict(config, config_from_yaml, validate_item=validate_config_item)
     if show_msg:
         logger.info(
             f"🔧️ Initializing config from local file: {config_file_or_yaml}"

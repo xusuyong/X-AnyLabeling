@@ -78,6 +78,7 @@ class Canvas(
     # Emitted when brush-edit mode is toggled on/off (keeps the UI in sync).
     brush_mode_changed = QtCore.pyqtSignal(bool)
     brush_history_changed = QtCore.pyqtSignal(bool)
+    raw_point_clicked = QtCore.pyqtSignal(QtCore.QPointF)
 
     CREATE, EDIT = 0, 1
 
@@ -214,6 +215,10 @@ class Canvas(
         self.cross_line_width = 2.0
         self.cross_line_color = "#00FF00"
         self.cross_line_opacity = 0.5
+
+        # RAW volume inspection crosshair
+        self.raw_crosshair_active = False
+        self.raw_crosshair_point: Optional[QtCore.QPointF] = None
 
         # Set attributes color options.
         self.attr_background_color = self.attributes_config.get(
@@ -1978,6 +1983,21 @@ class Canvas(
             ev.accept()
             return
 
+        if (
+            self.raw_crosshair_active
+            and self.pixmap is not None
+            and self._left_button_pressed(ev)
+        ):
+            if (
+                0 <= pos.x() <= self.pixmap.width()
+                and 0 <= pos.y() <= self.pixmap.height()
+            ):
+                self.raw_crosshair_point = pos
+                self.raw_point_clicked.emit(pos)
+                self.update()
+                ev.accept()
+                return
+
         if self.is_brush_mode and self.editing():
             self._brush_mouse_move(ev, pos)
             return
@@ -2587,6 +2607,21 @@ class Canvas(
 
         if self.is_brush_mode and self._brush_mouse_press(ev, pos):
             return
+
+        if (
+            self.raw_crosshair_active
+            and self.pixmap is not None
+            and ev.button() == QtCore.Qt.MouseButton.LeftButton
+        ):
+            if (
+                0 <= pos.x() <= self.pixmap.width()
+                and 0 <= pos.y() <= self.pixmap.height()
+            ):
+                self.raw_crosshair_point = pos
+                self.raw_point_clicked.emit(pos)
+                self.update()
+                ev.accept()
+                return
 
         if ev.button() == QtCore.Qt.MouseButton.LeftButton:
             if (
@@ -4513,6 +4548,33 @@ class Canvas(
                 QtCore.QPointF(rect.right(), self.prev_move_point.y()),
             )
 
+        # Draw 3D volume inspection crosshair
+        if (
+            self.raw_crosshair_active
+            and self.raw_crosshair_point is not None
+            and self.pixmap is not None
+        ):
+            cx = self.raw_crosshair_point.x()
+            cy = self.raw_crosshair_point.y()
+            pw = float(self.pixmap.width())
+            ph = float(self.pixmap.height())
+
+            p.save()
+            # Dark contrast outline
+            pen_outline = QtGui.QPen(QtGui.QColor(0, 0, 0, 200), 2.5)
+            pen_outline.setCosmetic(True)
+            p.setPen(pen_outline)
+            p.drawLine(QtCore.QPointF(0, cy), QtCore.QPointF(pw, cy))
+            p.drawLine(QtCore.QPointF(cx, 0), QtCore.QPointF(cx, ph))
+
+            # Foreground bright yellow crosshair line
+            pen_inner = QtGui.QPen(QtGui.QColor("#FFFF00"), 1.2)
+            pen_inner.setCosmetic(True)
+            p.setPen(pen_inner)
+            p.drawLine(QtCore.QPointF(0, cy), QtCore.QPointF(pw, cy))
+            p.drawLine(QtCore.QPointF(cx, 0), QtCore.QPointF(cx, ph))
+            p.restore()
+
         # Draw attributes
         if self.show_attributes:
             font_size = int(max(8.0, int(round(10.0 / Shape.scale))))
@@ -5460,6 +5522,21 @@ class Canvas(
         self.cross_line_width = width
         self.cross_line_color = color
         self.cross_line_opacity = opacity
+        self.update()
+
+    def set_raw_crosshair_active(self, active: bool):
+        """Activate or deactivate 3D RAW volume crosshair mode."""
+        self.raw_crosshair_active = active
+        if active:
+            self.setCursor(QtCore.Qt.CursorShape.CrossCursor)
+        else:
+            self.restore_cursor()
+            self.raw_crosshair_point = None
+        self.update()
+
+    def set_raw_crosshair_point(self, pos=None):
+        """Set 3D RAW volume crosshair inspection position."""
+        self.raw_crosshair_point = pos
         self.update()
 
     def _cross_line_pen(self) -> QtGui.QPen:

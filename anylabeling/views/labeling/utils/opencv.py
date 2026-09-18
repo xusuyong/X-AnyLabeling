@@ -11,7 +11,11 @@ def qt_img_to_rgb_cv_img(qt_img, img_path=None):
     """
     Convert 8bit/16bit RGB image or 8bit/16bit Gray image to 8bit RGB image
     """
-    if img_path is not None and os.path.exists(img_path):
+    if (
+        img_path is not None
+        and os.path.exists(img_path)
+        and not img_path.lower().endswith(".raw")
+    ):
         # Load Image From Path Directly
         # NOTE: Potential issue - unable to handle the flipped image.
         # Temporary workaround: cv_image = cv2.imread(img_path)
@@ -24,6 +28,10 @@ def qt_img_to_rgb_cv_img(qt_img, img_path=None):
             or qt_img.format() == QImage.Format.Format_ARGB32_Premultiplied
         ):
             cv_image = qimage2ndarray.rgb_view(qt_img)
+        elif qt_img.format() == QImage.Format.Format_RGB888:
+            cv_image = qimage2ndarray.rgb_view(
+                qt_img.convertToFormat(QImage.Format.Format_RGB32)
+            )
         else:
             cv_image = qimage2ndarray.raw_view(qt_img)
     # To uint8

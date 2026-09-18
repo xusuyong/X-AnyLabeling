@@ -80,6 +80,7 @@ from .widgets import (
     CompareOverlayWidget,
     CompareViewManager,
     CompareViewSlider,
+    RawZSlider,
     VQADialog,
     FileDialogPreview,
     PPOCRDialog,
@@ -520,6 +521,56 @@ class LabelingWidget(LabelDialog):
             self.compare_view_slider.set_position
         )
 
+        # RAW volume support
+        self.raw_volume = None
+        self.raw_info = None
+        self.raw_current_z = 0
+        self.raw_slice_shapes = {}
+        self.raw_ortho_active = False
+        self.raw_inspection_x = 0
+        self.raw_inspection_y = 0
+        self.raw_z_slider = RawZSlider(self)
+        self.raw_z_slider.z_changed.connect(self.on_raw_z_changed)
+        self.raw_z_slider.orthogonal_view_toggled.connect(
+            self.toggle_raw_orthogonal_views
+        )
+        self.raw_z_slider.crosshair_toggled.connect(
+            self.toggle_raw_crosshair
+        )
+        self.raw_z_slider.decompose_requested.connect(
+            self.on_raw_decompose_requested
+        )
+
+        # Shortcut to toggle 3D orthogonal side views (◫ 侧视图). Window-scoped
+        # so it works regardless of which child widget (e.g. the canvas) has focus.
+        side_view_shortcut = QtGui.QShortcut(
+            QtGui.QKeySequence("Shift+V"), self
+        )
+        side_view_shortcut.activated.connect(self.toggle_raw_side_views)
+
+        # Z-axis slice navigation (PageUp / PageDown). Also window-scoped so the
+        # keys are not intercepted by the main-view scroll area / scrollbars.
+        for _seq, _step in (
+            (QtCore.Qt.Key.Key_PageUp, -1),
+            (QtCore.Qt.Key.Key_PageDown, 1),
+        ):
+            z_shortcut = QtGui.QShortcut(QtGui.QKeySequence(_seq), self)
+            z_shortcut.activated.connect(lambda s=_step: self._raw_z_step(s))
+
+        from .widgets.raw_orthogonal_dialog import (
+            OrthogonalCanvasWidget,
+            RawOrthoCornerWidget,
+        )
+
+        self.raw_xz_view = OrthogonalCanvasWidget(view_type="XZ", parent=self)
+        self.raw_yz_view = OrthogonalCanvasWidget(view_type="YZ", parent=self)
+        self.raw_corner_widget = RawOrthoCornerWidget(parent=self)
+        self.raw_xz_view.point_clicked.connect(self.on_raw_xz_clicked)
+        self.raw_yz_view.point_clicked.connect(self.on_raw_yz_clicked)
+        self.raw_corner_widget.close_requested.connect(
+            lambda: self.toggle_raw_orthogonal_views(False)
+        )
+
         self._compare_overlay = CompareOverlayWidget(self)
         self.compare_view_manager.compare_pixmap_loaded.connect(
             self._compare_overlay.set_pixmap
@@ -587,6 +638,9 @@ class LabelingWidget(LabelDialog):
         self.canvas.brush_mode_changed.connect(self.on_brush_mode_changed)
         self.canvas.brush_history_changed.connect(
             lambda can_undo: self.actions.undo.setEnabled(can_undo)
+        )
+        self.canvas.raw_point_clicked.connect(
+            self.on_raw_canvas_point_clicked
         )
         # [Feature] support for automatically switching to editing mode
         # when the cursor moves over an object
@@ -2528,8 +2582,51 @@ class LabelingWidget(LabelDialog):
         central_layout.addLayout(instruction_layout)
         central_layout.addSpacing(5)
         central_layout.addWidget(self.auto_labeling_widget)
-        central_layout.addWidget(scroll_area)
+        # Setup Orthogonal Splitters:
+        # Top row: [ scroll_area (XY) | raw_yz_view (YZ - directly to right of XY) ]
+        self.raw_top_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        self.raw_top_splitter.setChildrenCollapsible(False)
+        self.raw_top_splitter.setHandleWidth(3)
+        self.raw_top_splitter.addWidget(scroll_area)
+        self.raw_top_splitter.addWidget(self.raw_yz_view)
+
+        # Bottom row: [ raw_xz_view (XZ - directly below XY) | raw_corner_widget ]
+        self.raw_bottom_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        self.raw_bottom_splitter.setChildrenCollapsible(False)
+        self.raw_bottom_splitter.setHandleWidth(3)
+        self.raw_bottom_splitter.addWidget(self.raw_xz_view)
+        self.raw_bottom_splitter.addWidget(self.raw_corner_widget)
+
+        # Sync horizontal divider between top and bottom rows
+        def _sync_top_splitter(pos, index):
+            if hasattr(self, "raw_bottom_splitter") and self.raw_bottom_splitter.isVisible():
+                self.raw_bottom_splitter.blockSignals(True)
+                self.raw_bottom_splitter.setSizes(self.raw_top_splitter.sizes())
+                self.raw_bottom_splitter.blockSignals(False)
+
+        def _sync_bottom_splitter(pos, index):
+            if hasattr(self, "raw_top_splitter") and self.raw_top_splitter.isVisible():
+                self.raw_top_splitter.blockSignals(True)
+                self.raw_top_splitter.setSizes(self.raw_bottom_splitter.sizes())
+                self.raw_top_splitter.blockSignals(False)
+
+        self.raw_top_splitter.splitterMoved.connect(_sync_top_splitter)
+        self.raw_bottom_splitter.splitterMoved.connect(_sync_bottom_splitter)
+
+        # Vertical splitter for the workspace: [ raw_top_splitter | raw_bottom_splitter ]
+        self.raw_workspace_splitter = QtWidgets.QSplitter(Qt.Orientation.Vertical)
+        self.raw_workspace_splitter.setChildrenCollapsible(False)
+        self.raw_workspace_splitter.setHandleWidth(3)
+        self.raw_workspace_splitter.addWidget(self.raw_top_splitter)
+        self.raw_workspace_splitter.addWidget(self.raw_bottom_splitter)
+
+        # Hide side views by default
+        self.raw_yz_view.hide()
+        self.raw_bottom_splitter.hide()
+
+        central_layout.addWidget(self.raw_workspace_splitter)
         central_layout.addWidget(self.compare_view_slider)
+        central_layout.addWidget(self.raw_z_slider)
         central_layout.addWidget(self.image_tags_widget)
         central_widget = QWidget()
         central_widget.setLayout(central_layout)
@@ -3269,6 +3366,14 @@ class LabelingWidget(LabelDialog):
         self.statusBar().showMessage(message, delay)
 
     def reset_state(self):
+        if hasattr(self, "raw_volume") and self.raw_volume is not None:
+            self.raw_volume.close()
+            self.raw_volume = None
+        self.raw_info = None
+        self.raw_current_z = 0
+        self.raw_slice_shapes = {}
+        if hasattr(self, "raw_z_slider"):
+            self.raw_z_slider.hide()
         self._reset_label_loop()
         self.select_loop_count = -1
         self.label_list.clear()
@@ -5447,16 +5552,54 @@ class LabelingWidget(LabelDialog):
         label_file = LabelFile()
         # Get current shapes
         # Excluding auto labeling special shapes
-        shapes = [
-            item.shape().to_dict()
-            for item in self.label_list
-            if item.shape().label
-            not in [
-                AutoLabelingMode.OBJECT,
-                AutoLabelingMode.ADD,
-                AutoLabelingMode.REMOVE,
+        if self.raw_volume is not None and self.raw_info is not None:
+            current_shapes = []
+            for item in self.label_list:
+                sh = item.shape()
+                if sh.label not in [
+                    AutoLabelingMode.OBJECT,
+                    AutoLabelingMode.ADD,
+                    AutoLabelingMode.REMOVE,
+                ]:
+                    sh.other_data["slice_index"] = self.raw_current_z
+                    phys_z = self.raw_info.get_slice_z_coord(self.raw_current_z)
+                    if phys_z is not None:
+                        sh.other_data["z"] = phys_z
+                    current_shapes.append(sh)
+            self.raw_slice_shapes[self.raw_current_z] = current_shapes
+
+            shapes = []
+            for z_idx in sorted(self.raw_slice_shapes.keys()):
+                for sh in self.raw_slice_shapes[z_idx]:
+                    d = sh.to_dict() if hasattr(sh, "to_dict") else dict(sh)
+                    d["slice_index"] = z_idx
+                    pz = self.raw_info.get_slice_z_coord(z_idx)
+                    if pz is not None:
+                        d["z"] = pz
+                    shapes.append(d)
+
+            self.other_data["raw_current_z"] = self.raw_current_z
+            self.other_data["raw_info"] = {
+                "width": self.raw_info.width,
+                "height": self.raw_info.height,
+                "depth": self.raw_info.depth,
+                "dtype": self.raw_info.data_type,
+                "voxel_size": self.raw_info.pixel_width,
+                "voxel_unit": self.raw_info.unit,
+                "z_start": self.raw_info.start_z,
+                "z_end": self.raw_info.end_z,
+            }
+        else:
+            shapes = [
+                item.shape().to_dict()
+                for item in self.label_list
+                if item.shape().label
+                not in [
+                    AutoLabelingMode.OBJECT,
+                    AutoLabelingMode.ADD,
+                    AutoLabelingMode.REMOVE,
+                ]
             ]
-        ]
         flags = {}
         for i in range(self.flag_widget.count()):
             item = self.flag_widget.item(i)
@@ -6201,6 +6344,366 @@ class LabelingWidget(LabelDialog):
         if next_files:
             self.next_files_changed.emit(next_files)
 
+    def on_raw_z_changed(self, new_z: int):
+        """Handle Z-axis slice index change for RAW volume."""
+        if self.raw_volume is None or self.raw_info is None:
+            return
+        if new_z == self.raw_current_z:
+            return
+        if new_z < 0 or new_z >= self.raw_volume.depth:
+            return
+
+        from .utils.raw_reader import slice_to_png_bytes, slice_to_qimage
+
+        was_dirty = self.dirty
+
+        # 1. Save current shapes from label_list to self.raw_slice_shapes
+        current_shapes = []
+        for item in self.label_list:
+            sh = item.shape()
+            if sh.label not in [
+                AutoLabelingMode.OBJECT,
+                AutoLabelingMode.ADD,
+                AutoLabelingMode.REMOVE,
+            ]:
+                sh.other_data["slice_index"] = self.raw_current_z
+                phys_z = self.raw_info.get_slice_z_coord(self.raw_current_z)
+                if phys_z is not None:
+                    sh.other_data["z"] = phys_z
+                current_shapes.append(sh)
+        self.raw_slice_shapes[self.raw_current_z] = current_shapes
+
+        # 2. Update current_z
+        self.raw_current_z = new_z
+
+        # 3. Clear canvas and label list
+        self.label_list.clear()
+        self.canvas.load_shapes([])
+
+        # 4. Extract new slice
+        slice_arr = self.raw_volume.get_axial_slice(self.raw_current_z)
+        qimage = slice_to_qimage(slice_arr)
+        self.image = qimage
+        self.image_data = slice_to_png_bytes(slice_arr)
+
+        # 5. Handle brightness / contrast
+        brightness, contrast = self.brightness_contrast_values.get(
+            self.filename, (None, None)
+        )
+        self.brightness_contrast_processor.update_image(
+            utils.img_data_to_pil(self.image_data)
+        )
+        if brightness is not None or contrast is not None:
+            adj_img = self.brightness_contrast_processor.adjust(
+                brightness if brightness is not None else 50,
+                contrast if contrast is not None else 50,
+            )
+            self.canvas.load_pixmap(
+                QtGui.QPixmap.fromImage(adj_img), clear_shapes=True
+            )
+        else:
+            self.canvas.load_pixmap(
+                QtGui.QPixmap.fromImage(qimage), clear_shapes=True
+            )
+
+        # 6. Load shapes for the new slice
+        new_shapes = self.raw_slice_shapes.get(self.raw_current_z, [])
+        if new_shapes:
+            self.load_shapes(new_shapes, update_last_label=False)
+
+        # 7. Update navigator if active
+        if hasattr(self, "navigator_dialog") and self.navigator_dialog.isVisible():
+            self.navigator_dialog.set_image(QtGui.QPixmap.fromImage(qimage))
+            self.update_navigator_shapes()
+
+        # 8. Restore dirty state
+        if was_dirty:
+            self.set_dirty()
+        else:
+            self.set_clean()
+
+        self.raw_z_slider.set_current_z(self.raw_current_z)
+        self.update_raw_orthogonal_views()
+        self.paint_canvas()
+
+    def update_raw_orthogonal_views(self):
+        """Update side views (XZ below, YZ right) and coordinate readout."""
+        if self.raw_volume is None or self.raw_info is None:
+            return
+
+        aspect_z = 1.0
+        if self.raw_info.pixel_width > 0:
+            aspect_z = self.raw_info.slice_thickness / self.raw_info.pixel_width
+
+        val = self.raw_volume.get_voxel_value(
+            self.raw_inspection_x, self.raw_inspection_y, self.raw_current_z
+        )
+        phys_z = self.raw_info.get_slice_z_coord(self.raw_current_z)
+
+        # Update bottom slider badge
+        self.raw_z_slider.set_voxel_info(
+            self.raw_inspection_x,
+            self.raw_inspection_y,
+            self.raw_current_z,
+            val,
+            phys_z=phys_z,
+            unit=self.raw_info.unit,
+        )
+
+        # If orthogonal views are active, update side views & corner widget
+        if getattr(self, "raw_ortho_active", False):
+            coronal = self.raw_volume.get_coronal_slice(self.raw_inspection_y)
+            self.raw_xz_view.set_slice_data(
+                coronal,
+                self.raw_inspection_x,
+                self.raw_current_z,
+                aspect_ratio_z=aspect_z,
+            )
+
+            sagittal = self.raw_volume.get_sagittal_slice(self.raw_inspection_x)
+            self.raw_yz_view.set_slice_data(
+                sagittal,
+                self.raw_inspection_y,
+                self.raw_current_z,
+                aspect_ratio_z=aspect_z,
+            )
+
+            self.raw_corner_widget.set_volume_info(self.raw_info)
+            self.raw_corner_widget.set_coordinates(
+                self.raw_inspection_x,
+                self.raw_inspection_y,
+                self.raw_current_z,
+                val,
+                phys_z=phys_z,
+                unit=self.raw_info.unit,
+            )
+
+    def toggle_raw_side_views(self):
+        """Toggle 3D orthogonal side views from the Shift+V shortcut."""
+        if self.raw_volume is None or self.raw_info is None:
+            return
+        self.toggle_raw_orthogonal_views(not self.raw_ortho_active)
+
+    def _raw_z_step(self, step: int):
+        """Move the RAW Z-axis slice from the PageUp/PageDown shortcuts."""
+        if self.raw_volume is None or not self.raw_z_slider.isVisible():
+            return
+        if step < 0:
+            self.raw_z_slider.prev_slice()
+        else:
+            self.raw_z_slider.next_slice()
+
+    def toggle_raw_orthogonal_views(self, show: bool = True):
+        """Toggle 3D RAW volume orthogonal side views (XZ below XY, YZ to the right of XY)."""
+        if self.raw_volume is None or self.raw_info is None:
+            self.raw_z_slider.set_orthogonal_view_checked(False)
+            self.raw_ortho_active = False
+            if hasattr(self, "raw_yz_view"):
+                self.raw_yz_view.hide()
+            if hasattr(self, "raw_bottom_splitter"):
+                self.raw_bottom_splitter.hide()
+            return
+
+        self.raw_ortho_active = show
+        self.raw_z_slider.set_orthogonal_view_checked(show)
+
+        if show:
+            self.raw_yz_view.show()
+            self.raw_bottom_splitter.show()
+            self.raw_xz_view.show()
+            self.raw_corner_widget.show()
+
+            # Proportional initial layout: ~72% for main XY, ~28% for side views
+            total_w = self.raw_workspace_splitter.width() or 1000
+            total_h = self.raw_workspace_splitter.height() or 700
+            w_main = max(200, int(total_w * 0.72))
+            w_side = max(100, total_w - w_main)
+            h_main = max(200, int(total_h * 0.72))
+            h_side = max(100, total_h - h_main)
+
+            self.raw_top_splitter.setSizes([w_main, w_side])
+            self.raw_bottom_splitter.setSizes([w_main, w_side])
+            self.raw_workspace_splitter.setSizes([h_main, h_side])
+
+            # Activate crosshair mode for convenient ImageJ-style point clicking
+            self.toggle_raw_crosshair(True)
+            self.update_raw_orthogonal_views()
+        else:
+            self.raw_yz_view.hide()
+            self.raw_bottom_splitter.hide()
+
+    def toggle_raw_crosshair(self, active: bool = True):
+        """Toggle 3D RAW volume crosshair inspection mode on canvas."""
+        if self.raw_volume is None or self.raw_info is None:
+            self.raw_z_slider.set_crosshair_checked(False)
+            self.canvas.set_raw_crosshair_active(False)
+            return
+
+        self.canvas.set_raw_crosshair_active(active)
+        self.raw_z_slider.set_crosshair_checked(active)
+        if active:
+            pos = QtCore.QPointF(
+                float(self.raw_inspection_x), float(self.raw_inspection_y)
+            )
+            self.canvas.set_raw_crosshair_point(pos)
+        self.canvas.update()
+
+    def on_raw_canvas_point_clicked(self, pos: QtCore.QPointF):
+        """Handle point clicks/drags on the main canvas (XY plane)."""
+        if self.raw_volume is None or self.raw_info is None:
+            return
+
+        self.raw_inspection_x = max(0, min(self.raw_volume.width - 1, int(round(pos.x()))))
+        self.raw_inspection_y = max(0, min(self.raw_volume.height - 1, int(round(pos.y()))))
+        self.update_raw_orthogonal_views()
+
+    def on_raw_xz_clicked(self, x: int, z: int):
+        """Handle click/drag on the XZ side view (directly BELOW XY)."""
+        if self.raw_volume is None or self.raw_info is None:
+            return
+
+        self.raw_inspection_x = max(0, min(self.raw_volume.width - 1, x))
+        self.canvas.set_raw_crosshair_point(
+            QtCore.QPointF(float(self.raw_inspection_x), float(self.raw_inspection_y))
+        )
+        if z != self.raw_current_z:
+            self.on_raw_z_changed(z)
+        else:
+            self.update_raw_orthogonal_views()
+
+    def on_raw_yz_clicked(self, y: int, z: int):
+        """Handle click/drag on the YZ side view (directly to the RIGHT of XY)."""
+        if self.raw_volume is None or self.raw_info is None:
+            return
+
+        self.raw_inspection_y = max(0, min(self.raw_volume.height - 1, y))
+        self.canvas.set_raw_crosshair_point(
+            QtCore.QPointF(float(self.raw_inspection_x), float(self.raw_inspection_y))
+        )
+        if z != self.raw_current_z:
+            self.on_raw_z_changed(z)
+        else:
+            self.update_raw_orthogonal_views()
+
+    def on_raw_decompose_requested(self):
+        """Prompt user to decompose current RAW annotations into individual slice images and JSONs."""
+        if self.raw_volume is None or self.raw_info is None or not self.filename:
+            return
+
+        from pathlib import Path
+        raw_path = Path(self.filename)
+        current_dir = raw_path.parent
+        # Default sibling output folder at the same level: {parent}/{current_dir.name}_slices
+        default_out_dir = current_dir.parent / f"{current_dir.name}_slices"
+
+        # Corresponding JSON file
+        json_candidates = [
+            raw_path.with_suffix(".json"),
+            current_dir / f"{raw_path.stem}.json",
+        ]
+        json_path = next((j for j in json_candidates if j.exists()), None)
+        if not json_path:
+            if not self.raw_slice_shapes:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    self.tr("提示"),
+                    self.tr("当前 RAW 文件尚无标注，请先在切片上标注并保存 (Ctrl+S)！"),
+                )
+                return
+            self.save_file()
+            json_path = next((j for j in json_candidates if j.exists()), None)
+
+        # Dialog for options
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(self.tr("分解导出 RAW 切片与标注"))
+        dlg.resize(500, 220)
+        vbox = QtWidgets.QVBoxLayout(dlg)
+        vbox.setSpacing(12)
+
+        info_lbl = QtWidgets.QLabel(
+            self.tr(f"将 <b>{raw_path.name}</b> 的体标注分解为单张切片图像与对应标准的 2D JSON 标注文件。")
+        )
+        info_lbl.setWordWrap(True)
+        vbox.addWidget(info_lbl)
+
+        # Output folder row
+        folder_layout = QtWidgets.QHBoxLayout()
+        folder_layout.addWidget(QtWidgets.QLabel(self.tr("保存路径(同级新建):")))
+        folder_edit = QtWidgets.QLineEdit(str(default_out_dir))
+        folder_layout.addWidget(folder_edit)
+        browse_btn = QtWidgets.QPushButton(self.tr("浏览..."))
+
+        def _browse_folder():
+            d = QtWidgets.QFileDialog.getExistingDirectory(
+                dlg, self.tr("选择保存文件夹"), str(default_out_dir.parent)
+            )
+            if d:
+                folder_edit.setText(d)
+
+        browse_btn.clicked.connect(_browse_folder)
+        folder_layout.addWidget(browse_btn)
+        vbox.addLayout(folder_layout)
+
+        # Format selection row (jpg, png, bmp, default jpg)
+        fmt_layout = QtWidgets.QHBoxLayout()
+        fmt_layout.addWidget(QtWidgets.QLabel(self.tr("图片格式:")))
+        fmt_combo = QtWidgets.QComboBox()
+        fmt_combo.addItem("JPG (*.jpg) - 默认推荐", "jpg")
+        fmt_combo.addItem("PNG (*.png)", "png")
+        fmt_combo.addItem("BMP (*.bmp)", "bmp")
+        fmt_combo.setCurrentIndex(0)  # Default: JPG
+        fmt_layout.addWidget(fmt_combo)
+        fmt_layout.addStretch()
+        vbox.addLayout(fmt_layout)
+
+        # Checkbox for annotated only
+        chk_annotated = QtWidgets.QCheckBox(self.tr("仅导出有标注的切片 (推荐)"))
+        chk_annotated.setChecked(True)
+        vbox.addWidget(chk_annotated)
+
+        # Dialog buttons
+        btn_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        btn_box.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText(self.tr("开始分解"))
+        btn_box.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText(self.tr("取消"))
+        btn_box.accepted.connect(dlg.accept)
+        btn_box.rejected.connect(dlg.reject)
+        vbox.addWidget(btn_box)
+
+        if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        target_dir = Path(folder_edit.text().strip())
+        chosen_fmt = fmt_combo.currentData()
+        only_ann = chk_annotated.isChecked()
+
+        # Execute decomposition
+        from tools.raw_decompose import decompose_single_raw
+        cnt = decompose_single_raw(
+            raw_path=raw_path,
+            json_path=json_path,
+            output_dir=target_dir,
+            only_annotated=only_ann,
+            img_format=chosen_fmt,
+        )
+
+        msg_box = QtWidgets.QMessageBox(self)
+        msg_box.setWindowTitle(self.tr("分解完成"))
+        msg_box.setText(
+            self.tr(
+                f"已成功分解导出 {cnt} 张切片图像 ({chosen_fmt.upper()}) 与对应标准 2D 标注 (JSON)！\n\n"
+                f"保存目录: {target_dir}"
+            )
+        )
+        open_btn = msg_box.addButton(self.tr("打开所在文件夹"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        msg_box.addButton(QtWidgets.QMessageBox.StandardButton.Ok)
+        msg_box.exec()
+
+        if msg_box.clickedButton() == open_btn:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(target_dir)))
+
     def load_file(self, filename=None):  # noqa: C901
         """Load the specified file, or the last opened file if None."""
 
@@ -6245,6 +6748,18 @@ class LabelingWidget(LabelDialog):
             label_file_without_path = osp.basename(label_file)
             label_file = self.output_dir + "/" + label_file_without_path
 
+        is_raw = filename.lower().endswith(".raw")
+        if is_raw:
+            from .utils.raw_reader import (
+                parse_raw_file_info,
+                RawVolume,
+                slice_to_png_bytes,
+                slice_to_qimage,
+            )
+            self.raw_info = parse_raw_file_info(filename)
+            if self.raw_info:
+                self.raw_volume = RawVolume(self.raw_info, use_memmap=True)
+
         if QtCore.QFile.exists(label_file) and LabelFile.is_label_file(
             label_file
         ):
@@ -6272,21 +6787,55 @@ class LabelingWidget(LabelDialog):
                 self.shape_text_edit.setPlainText(
                     self.other_data.get("description", "")
                 )
-        else:
-            self.image_data = LabelFile.load_image_file(filename)
-            if self.image_data:
+
+            if is_raw and self.raw_volume is not None:
+                self.raw_slice_shapes = {}
+                for shape in self.label_file.shapes:
+                    s_idx = shape.other_data.get("slice_index")
+                    if s_idx is None:
+                        s_idx = 0
+                    else:
+                        s_idx = int(s_idx)
+                    if s_idx not in self.raw_slice_shapes:
+                        self.raw_slice_shapes[s_idx] = []
+                    self.raw_slice_shapes[s_idx].append(shape)
+                initial_z = self.other_data.get("raw_current_z", 0)
+                if initial_z < 0 or initial_z >= self.raw_volume.depth:
+                    initial_z = 0
+                self.raw_current_z = initial_z
+                slice_arr = self.raw_volume.get_axial_slice(self.raw_current_z)
+                self.image_data = slice_to_png_bytes(slice_arr)
                 self.image_path = filename
-            self.label_file = None
-            self.other_data = {CHECKED_FIELD: False}
-            with QtCore.QSignalBlocker(self.shape_text_edit):
-                self.shape_text_edit.setPlainText("")
+                image = slice_to_qimage(slice_arr)
+            else:
+                image = utils.img_data_to_qimage(self.image_data, filename)
+        else:
+            if is_raw and self.raw_volume is not None:
+                self.raw_slice_shapes = {}
+                self.raw_current_z = 0
+                slice_arr = self.raw_volume.get_axial_slice(0)
+                self.image_data = slice_to_png_bytes(slice_arr)
+                self.image_path = filename
+                image = slice_to_qimage(slice_arr)
+                self.label_file = None
+                self.other_data = {CHECKED_FIELD: False}
+                with QtCore.QSignalBlocker(self.shape_text_edit):
+                    self.shape_text_edit.setPlainText("")
+            else:
+                self.image_data = LabelFile.load_image_file(filename)
+                if self.image_data:
+                    self.image_path = filename
+                self.label_file = None
+                self.other_data = {CHECKED_FIELD: False}
+                with QtCore.QSignalBlocker(self.shape_text_edit):
+                    self.shape_text_edit.setPlainText("")
+                image = utils.img_data_to_qimage(self.image_data, filename)
         self.shape_text_label.setText(self.tr("Image Description"))
         self.shape_text_edit.setDisabled(False)
 
         # TODO(jack): icc profile issue warning
         # - qt.gui.icc: fromIccProfile: failed minimal tag size sanity
         # - qt.gui.icc: fromIccProfile: invalid tag offset alignment
-        image = utils.img_data_to_qimage(self.image_data, filename)
 
         if image.isNull():
             formats = [
@@ -6342,7 +6891,11 @@ class LabelingWidget(LabelDialog):
                         **default_flags,
                         **shape.flags,
                     }
-            self.load_shapes(self.label_file.shapes, update_last_label=False)
+            if self.raw_volume is not None:
+                current_shapes = self.raw_slice_shapes.get(self.raw_current_z, [])
+                self.load_shapes(current_shapes, update_last_label=False)
+            else:
+                self.load_shapes(self.label_file.shapes, update_last_label=False)
             self.image_tags_widget.refresh_colors()
             if self.label_file.flags is not None:
                 flags.update(self.label_file.flags)
@@ -6414,6 +6967,18 @@ class LabelingWidget(LabelDialog):
         self.canvas_adjustment.show()
         self._position_canvas_adjustment()
 
+        if self.raw_volume is not None and self.raw_info is not None:
+            self.raw_inspection_x = self.raw_volume.width // 2
+            self.raw_inspection_y = self.raw_volume.height // 2
+            self.raw_z_slider.set_volume_info(self.raw_info, self.raw_current_z)
+            self.raw_z_slider.show()
+            self.update_raw_orthogonal_views()
+        else:
+            self.raw_z_slider.hide()
+            self.toggle_raw_orthogonal_views(False)
+            self.canvas.set_raw_crosshair_active(False)
+            self.raw_z_slider.set_crosshair_checked(False)
+
         if self.compare_view_manager.is_active():
             self.compare_view_manager.load_compare_for_file(self.filename)
 
@@ -6484,6 +7049,11 @@ class LabelingWidget(LabelDialog):
         if not self.may_continue():
             event.ignore()
             return
+        if hasattr(self, "raw_volume") and self.raw_volume is not None:
+            if hasattr(self, "raw_ortho_active") and self.raw_ortho_active:
+                self.toggle_raw_orthogonal_views(False)
+            self.raw_volume.close()
+            self.raw_volume = None
         if self.pointcloud_window is not None:
             if not self.pointcloud_window.can_close():
                 event.ignore()
@@ -7318,6 +7888,16 @@ class LabelingWidget(LabelDialog):
         )
         annotations_changed = bool(auto_labeling_result.shapes)
 
+        # Tag predicted shapes for 3D RAW volume slice
+        if self.raw_volume is not None and self.raw_info is not None:
+            phys_z = self.raw_info.get_slice_z_coord(self.raw_current_z)
+            for shape in auto_labeling_result.shapes:
+                if not hasattr(shape, "other_data") or shape.other_data is None:
+                    shape.other_data = {}
+                shape.other_data["slice_index"] = self.raw_current_z
+                if phys_z is not None:
+                    shape.other_data["z"] = phys_z
+
         # Clear existing shapes
         if auto_labeling_result.replace:
             locked_shapes = [
@@ -7337,6 +7917,18 @@ class LabelingWidget(LabelDialog):
                     item = self.label_list.find_item_by_shape(shape)
                     self.label_list.remove_item(item)
             self.load_shapes(auto_labeling_result.shapes, replace=False)
+
+        if self.raw_volume is not None and self.raw_info is not None:
+            current_shapes = []
+            for item in self.label_list:
+                sh = item.shape()
+                if sh.label not in [
+                    AutoLabelingMode.OBJECT,
+                    AutoLabelingMode.ADD,
+                    AutoLabelingMode.REMOVE,
+                ]:
+                    current_shapes.append(sh)
+            self.raw_slice_shapes[self.raw_current_z] = current_shapes
 
         # Set image description
         if auto_labeling_result.description:

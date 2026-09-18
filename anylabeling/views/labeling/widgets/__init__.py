@@ -8,6 +8,12 @@ from .canvas_adjustment import (
     CanvasAdjustmentWidget,
 )
 from .compare_view import CompareOverlayWidget, CompareViewManager, CompareViewSlider
+from .raw_z_slider import RawZSlider
+from .raw_orthogonal_dialog import (
+    RawOrthogonalViewDialog,
+    OrthogonalCanvasWidget,
+    RawOrthoCornerWidget,
+)
 from .chatbot_dialog import ChatbotDialog
 from .classifier_dialog import ClassifierDialog
 from .file_dialog_preview import FileDialogPreview

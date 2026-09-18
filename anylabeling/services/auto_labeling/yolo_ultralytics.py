@@ -115,15 +115,27 @@ class YOLOUltralytics(Model):
         if image is None:
             return []
 
-        if image_path and os.path.isfile(image_path):
+        if image_path and os.path.isfile(image_path) and not image_path.lower().endswith(".raw"):
             source = image_path
         else:
-            logger.warning(f"Could not load image from path: {image_path}. Trying to load from QImage.")
+            if not image_path or not image_path.lower().endswith(".raw"):
+                logger.warning(
+                    f"Could not load image from path: {image_path}. Trying to load from QImage."
+                )
             try:
-                image = image.convertToFormat(QImage.Format.Format_RGB888)
-                ptr = image.bits()
-                ptr.setsize(image.height() * image.width() * 3)
-                source = np.array(ptr).reshape(image.height(), image.width(), 3).copy()
+                if hasattr(image, "convertToFormat"):
+                    image = image.convertToFormat(QImage.Format.Format_BGR888)
+                    ptr = image.bits()
+                    ptr.setsize(image.height() * image.width() * 3)
+                    source = (
+                        np.array(ptr)
+                        .reshape(image.height(), image.width(), 3)
+                        .copy()
+                    )
+                elif isinstance(image, np.ndarray):
+                    source = image
+                else:
+                    source = np.array(image)
             except Exception as e:
                 logger.warning(f"Could not inference model from QImage: {e}")
                 return []
