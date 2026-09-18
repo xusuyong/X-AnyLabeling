@@ -12,7 +12,7 @@ from PyQt6 import QtGui
 
 from ...labeling.logger import logger
 
-EXTRA_IMAGE_EXTENSIONS = (".heic", ".heif")
+EXTRA_IMAGE_EXTENSIONS = (".heic", ".heif", ".raw")
 _PILLOW_HEIF_REGISTERED = False
 
 
@@ -86,17 +86,31 @@ def pil_to_qimage(img):
 
 
 def img_data_to_qimage(img_data, filename=None):
-    image = QtGui.QImage.fromData(img_data)
-    if not image.isNull():
-        return image
+    if img_data:
+        image = QtGui.QImage.fromData(img_data)
+        if not image.isNull():
+            return image
 
     if not filename or not filename.lower().endswith(EXTRA_IMAGE_EXTENSIONS):
-        return image
+        return QtGui.QImage()
+
+    if filename.lower().endswith(".raw"):
+        try:
+            from .raw_reader import parse_raw_file_info, RawVolume, slice_to_qimage
+            info = parse_raw_file_info(filename)
+            if info:
+                vol = RawVolume(info, use_memmap=True)
+                s = vol.get_axial_slice(0)
+                vol.close()
+                return slice_to_qimage(s)
+        except Exception as e:
+            logger.error(f"Error loading raw slice to QImage: {e}")
+            return QtGui.QImage()
 
     try:
         return pil_to_qimage(img_data_to_pil(img_data)).copy()
     except Exception:
-        return image
+        return QtGui.QImage()
 
 
 def img_arr_to_b64(img_arr):
@@ -135,6 +149,11 @@ def get_pil_img_dim(img_path):
     try:
         ensure_pillow_heif_registered()
         if isinstance(img_path, str):
+            if img_path.lower().endswith(".raw"):
+                from .raw_reader import parse_raw_file_info
+                info = parse_raw_file_info(img_path)
+                if info:
+                    return info.width, info.height
             with PIL.Image.open(img_path) as img:
                 return img.size[0], img.size[1]
         elif isinstance(img_path, bytes):

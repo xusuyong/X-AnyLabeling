@@ -59,6 +59,20 @@ class LabelFile:
     @staticmethod
     def load_image_file(filename, default=None):
         try:
+            if filename and str(filename).lower().endswith(".raw"):
+                from .utils.raw_reader import (
+                    parse_raw_file_info,
+                    RawVolume,
+                    slice_to_png_bytes,
+                )
+                info = parse_raw_file_info(filename)
+                if info:
+                    vol = RawVolume(info, use_memmap=True)
+                    s = vol.get_axial_slice(0)
+                    vol.close()
+                    png = slice_to_png_bytes(s)
+                    if png:
+                        return png
             with open(filename, "rb") as f:
                 return f.read()
         except Exception:
