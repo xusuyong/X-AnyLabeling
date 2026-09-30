@@ -6658,6 +6658,10 @@ class LabelingWidget(LabelDialog):
         if self.raw_volume is None or self.raw_info is None or not self.filename:
             return
 
+        # Ensure latest in-memory edits are saved to disk
+        if self.dirty:
+            self.save_file()
+
         from pathlib import Path
         raw_path = Path(self.filename)
         current_dir = raw_path.parent
@@ -6670,29 +6674,40 @@ class LabelingWidget(LabelDialog):
             current_dir / f"{raw_path.stem}.json",
         ]
         json_path = next((j for j in json_candidates if j.exists()), None)
-        if not json_path:
-            if not self.raw_slice_shapes:
-                QtWidgets.QMessageBox.information(
-                    self,
-                    self.tr("提示"),
-                    self.tr("当前 RAW 文件尚无标注，请先在切片上标注并保存 (Ctrl+S)！"),
-                )
-                return
+        if not json_path and self.raw_slice_shapes:
             self.save_file()
             json_path = next((j for j in json_candidates if j.exists()), None)
+
+        if not json_path and not self.raw_slice_shapes:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("提示"),
+                self.tr("当前 RAW 文件尚无标注，请先在切片上标注并保存 (Ctrl+S)！"),
+            )
+            return
 
         # Dialog for options
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("分解导出 RAW 切片与标注"))
-        dlg.resize(500, 220)
+        dlg.resize(520, 260)
         vbox = QtWidgets.QVBoxLayout(dlg)
         vbox.setSpacing(12)
 
         info_lbl = QtWidgets.QLabel(
-            self.tr(f"将 <b>{raw_path.name}</b> 的体标注分解为单张切片图像与对应标准的 2D JSON 标注文件。")
+            self.tr("将 3D RAW 体标注分解为单张 2D 切片图像与标准 2D JSON 标注文件。")
         )
         info_lbl.setWordWrap(True)
         vbox.addWidget(info_lbl)
+
+        # Scope selection row (current file vs all in folder)
+        scope_layout = QtWidgets.QHBoxLayout()
+        scope_layout.addWidget(QtWidgets.QLabel(self.tr("分解范围:")))
+        rb_current = QtWidgets.QRadioButton(self.tr(f"当前文件 ({raw_path.name})"))
+        rb_all = QtWidgets.QRadioButton(self.tr("当前文件夹全部 RAW 文件"))
+        rb_current.setChecked(True)
+        scope_layout.addWidget(rb_current)
+        scope_layout.addWidget(rb_all)
+        vbox.addLayout(scope_layout)
 
         # Output folder row
         folder_layout = QtWidgets.QHBoxLayout()
@@ -6747,15 +6762,24 @@ class LabelingWidget(LabelDialog):
         chosen_fmt = fmt_combo.currentData()
         only_ann = chk_annotated.isChecked()
 
-        # Execute decomposition
-        from tools.raw_decompose import decompose_single_raw
-        cnt = decompose_single_raw(
-            raw_path=raw_path,
-            json_path=json_path,
-            output_dir=target_dir,
-            only_annotated=only_ann,
-            img_format=chosen_fmt,
-        )
+        # Execute decomposition using internal utility
+        from .utils.raw_decompose import decompose_single_raw, decompose_raw_directory
+
+        if rb_all.isChecked():
+            cnt, _ = decompose_raw_directory(
+                input_dir=current_dir,
+                output_dir=target_dir,
+                only_annotated=only_ann,
+                img_format=chosen_fmt,
+            )
+        else:
+            cnt = decompose_single_raw(
+                raw_path=raw_path,
+                json_path=json_path,
+                output_dir=target_dir,
+                only_annotated=only_ann,
+                img_format=chosen_fmt,
+            )
 
         msg_box = QtWidgets.QMessageBox(self)
         msg_box.setWindowTitle(self.tr("分解完成"))

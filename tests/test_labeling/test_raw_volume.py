@@ -273,7 +273,7 @@ class TestRawVolume(unittest.TestCase):
     def test_raw_decompose(self):
         import json
         from pathlib import Path
-        from tools.raw_decompose import (
+        from anylabeling.views.labeling.utils.raw_decompose import (
             clean_shape_to_standard_2d,
             decompose_single_raw,
             decompose_raw_directory,
