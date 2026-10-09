@@ -227,6 +227,44 @@ class TestRawVolume(unittest.TestCase):
             self.assertGreater(len(result.shapes), 0)
             vol.close()
 
+    def test_single_channel_yolo_inference_matches_official(self):
+        gray_model_path = r"E:\xsy\pythoncode\myproj\9skytech\model\beizuan-det-gray_model_library\beizuan-det-gray_model_v4\261008_beizuan-det-gray_v4.pt"
+        if not os.path.exists(gray_model_path):
+            self.skipTest(f"Gray model not found at {gray_model_path}")
+
+        import glob
+        from PyQt6.QtGui import QImage
+        from ultralytics import YOLO
+        from anylabeling.services.auto_labeling.yolo_ultralytics import YOLOUltralytics
+
+        source_dir = r"E:\xsy\pythoncode\xsy_datasets\beizuan-det\261008_224_slices\train"
+        if not os.path.exists(source_dir):
+            self.skipTest(f"Source dir not found at {source_dir}")
+
+        files = glob.glob(os.path.join(source_dir, "*.jpg"))
+        if not files:
+            self.skipTest("No test images found")
+
+        model_official = YOLO(gray_model_path)
+        cfg = {
+            "type": "yolo_ultralytics",
+            "name": "beizuan_gray_test",
+            "display_name": "Beizuan Gray Test",
+            "model_path": gray_model_path,
+            "conf_threshold": 0.25,
+            "iou_threshold": 0.45,
+        }
+        yolo_service = YOLOUltralytics(cfg, lambda msg: None)
+        self.assertEqual(yolo_service.model_channels, 1)
+
+        for f in files:
+            off_res = model_official.predict(f, verbose=False)[0]
+            qimg = QImage(f)
+            # Test QImage inference (verifies single-channel and 4-byte row stride alignment)
+            res_qimg = yolo_service.predict_shapes(qimg)
+            self.assertEqual(len(off_res.boxes), len(res_qimg.shapes))
+
+
 
     def test_orthogonal_canvas_widgets(self):
         w, h, d = 40, 30, 10
