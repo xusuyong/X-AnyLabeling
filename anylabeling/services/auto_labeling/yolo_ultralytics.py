@@ -72,11 +72,47 @@ class YOLOUltralytics(Model):
             self.Meta.default_output_mode = "rectangle"
 
         self._classes = None
+        self._model_channels = None
         self.conf_thres = self.config.get("conf_threshold", 0.25)
         self.iou_thres = self.config.get("iou_threshold", 0.45)
         self.epsilon = 0.001
         self.replace = True
         self.filter_classes = self.config.get("filter_classes", None)
+
+    @property
+    def model_channels(self) -> int:
+        """Get expected input channels of the model (1 for grayscale, 3 for color)."""
+        if self._model_channels is not None:
+            return self._model_channels
+
+        self._model_channels = 3
+        try:
+            m = getattr(self.model, "model", None)
+            if m is not None:
+                yaml_cfg = getattr(m, "yaml", {})
+                if isinstance(yaml_cfg, dict) and "channels" in yaml_cfg:
+                    self._model_channels = int(yaml_cfg["channels"])
+                    return self._model_channels
+                if hasattr(m, "model") and len(m.model) > 0:
+                    first = m.model[0]
+                    if hasattr(first, "conv") and hasattr(first.conv, "in_channels"):
+                        self._model_channels = int(first.conv.in_channels)
+                        return self._model_channels
+                    if hasattr(first, "in_channels"):
+                        self._model_channels = int(first.in_channels)
+                        return self._model_channels
+                if hasattr(m, "channels"):
+                    self._model_channels = int(m.channels)
+                    return self._model_channels
+
+            pred = getattr(self.model, "predictor", None)
+            if pred is not None and hasattr(pred, "model") and hasattr(pred.model, "channels"):
+                self._model_channels = int(pred.model.channels)
+                return self._model_channels
+        except Exception as e:
+            logger.warning(f"Could not detect model channels, defaulting to 3: {e}")
+
+        return self._model_channels
 
     @property
     def classes(self):
@@ -112,7 +148,7 @@ class YOLOUltralytics(Model):
             self.filter_classes = class_names
 
     def predict_shapes(self, image, image_path=None):
-        if image is None:
+        if image is None and not image_path:
             return []
 
         if image_path and os.path.isfile(image_path) and not image_path.lower().endswith(".raw"):
@@ -123,17 +159,41 @@ class YOLOUltralytics(Model):
                     f"Could not load image from path: {image_path}. Trying to load from QImage."
                 )
             try:
+                channels = self.model_channels
                 if hasattr(image, "convertToFormat"):
-                    image = image.convertToFormat(QImage.Format.Format_BGR888)
-                    ptr = image.bits()
-                    ptr.setsize(image.height() * image.width() * 3)
-                    source = (
-                        np.array(ptr)
-                        .reshape(image.height(), image.width(), 3)
-                        .copy()
-                    )
+                    if channels == 1:
+                        img = image.convertToFormat(QImage.Format.Format_Grayscale8)
+                        w, h, bpl = img.width(), img.height(), img.bytesPerLine()
+                        ptr = img.bits()
+                        ptr.setsize(h * bpl)
+                        arr = np.frombuffer(ptr, dtype=np.uint8).reshape((h, bpl))
+                        if bpl != w:
+                            arr = arr[:, :w]
+                        source = arr.copy()
+                    else:
+                        img = image.convertToFormat(QImage.Format.Format_BGR888)
+                        w, h, bpl = img.width(), img.height(), img.bytesPerLine()
+                        ptr = img.bits()
+                        ptr.setsize(h * bpl)
+                        arr = np.frombuffer(ptr, dtype=np.uint8).reshape((h, bpl))
+                        arr = arr[:, : w * 3].reshape((h, w, 3))
+                        source = arr.copy()
                 elif isinstance(image, np.ndarray):
-                    source = image
+                    arr = image
+                    if channels == 1:
+                        if arr.ndim == 3 and arr.shape[2] == 3:
+                            source = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+                        elif arr.ndim == 3 and arr.shape[2] == 1:
+                            source = arr[:, :, 0]
+                        else:
+                            source = arr
+                    else:
+                        if arr.ndim == 2:
+                            source = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+                        elif arr.ndim == 3 and arr.shape[2] == 1:
+                            source = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+                        else:
+                            source = arr
                 else:
                     source = np.array(image)
             except Exception as e:
