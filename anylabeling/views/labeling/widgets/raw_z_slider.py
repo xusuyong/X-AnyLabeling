@@ -707,12 +707,7 @@ class RawZSlider(QtWidgets.QWidget):
         if self.file_info.pixel_width > 0:
             voxel_str = f" | {self.file_info.pixel_width:.1f} {self.file_info.unit}"
 
-        ann_cnt = self._annotated_slices.get(slice_idx, 0)
-        ann_str = f" [★ {ann_cnt}个标注]" if ann_cnt > 0 else ""
-
-        self._info_label.setText(
-            f"切片: {slice_idx + 1}/{total_depth} ({z_str}){ann_str} | {dim_str}{voxel_str}"
-        )
+        self._info_label.setText(f"切片: {slice_idx + 1}/{total_depth} ({z_str}) | {dim_str}{voxel_str}")
 
     def _update_button_states(self):
         if not self.file_info:
