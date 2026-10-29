@@ -187,24 +187,30 @@ class TestRawVolume(unittest.TestCase):
         slider.set_annotated_slices({5: 2, 10: 1, 25: 4})
         self.assertEqual(slider.get_annotated_slices(), {5: 2, 10: 1, 25: 4})
         self.assertIn("3层已标注", slider._annotated_btn.text())
-        self.assertIn("★ 1个标注", slider._info_label.text())
 
-        # Currently at z=10. Slices < 10: 5; slices > 10: 25.
+        # Both buttons remain enabled so user can click continuously
         self.assertTrue(slider._prev_annotated_btn.isEnabled())
         self.assertTrue(slider._next_annotated_btn.isEnabled())
 
-        # Jump to prev annotated
+        # Jump to prev annotated (10 -> 5)
         slider.jump_to_prev_annotated()
         self.assertEqual(slider.get_current_z(), 5)
-        self.assertFalse(slider._prev_annotated_btn.isEnabled())
-        self.assertTrue(slider._next_annotated_btn.isEnabled())
+        self.assertTrue(slider._prev_annotated_btn.isEnabled())
 
-        # Jump to next annotated
+        # Wrap around to the last annotated slice (5 -> 25)
+        slider.jump_to_prev_annotated()
+        self.assertEqual(slider.get_current_z(), 25)
+
+        # Jump to next annotated wraps to the first annotated slice (25 -> 5)
+        slider.jump_to_next_annotated()
+        self.assertEqual(slider.get_current_z(), 5)
+
+        # Jump to next annotated (5 -> 10 -> 25)
         slider.jump_to_next_annotated()
         self.assertEqual(slider.get_current_z(), 10)
         slider.jump_to_next_annotated()
         self.assertEqual(slider.get_current_z(), 25)
-        self.assertFalse(slider._next_annotated_btn.isEnabled())
+        self.assertTrue(slider._next_annotated_btn.isEnabled())
 
         # Test slider render with markers (paintEvent)
         pm = QtGui.QPixmap(400, 30)
