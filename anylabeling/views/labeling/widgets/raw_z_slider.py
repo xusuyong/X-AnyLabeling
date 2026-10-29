@@ -1,11 +1,78 @@
 """Z-axis slider and volume inspection widget for 3D RAW volume navigation."""
 
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List, Set, Union
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 
 from anylabeling.views.labeling.utils.theme import get_theme
 from anylabeling.views.labeling.utils.raw_reader import RawFileInfo
+
+
+class _AnnotatedSlider(QtWidgets.QSlider):
+    """Horizontal slider with visual markers on slices containing annotations."""
+
+    def __init__(
+        self,
+        orientation: Qt.Orientation = Qt.Orientation.Horizontal,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ):
+        super().__init__(orientation, parent)
+        self._annotated_slices: Dict[int, int] = {}
+
+    def set_annotated_slices(self, slices: Dict[int, int]):
+        self._annotated_slices = dict(slices)
+        self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent):
+        super().paintEvent(event)
+        if not self._annotated_slices or self.maximum() <= self.minimum():
+            return
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        opt = QtWidgets.QStyleOptionSlider()
+        self.initStyleOption(opt)
+        groove_rect = self.style().subControlRect(
+            QtWidgets.QStyle.ComplexControl.CC_Slider,
+            opt,
+            QtWidgets.QStyle.SubControl.SC_SliderGroove,
+            self,
+        )
+        handle_rect = self.style().subControlRect(
+            QtWidgets.QStyle.ComplexControl.CC_Slider,
+            opt,
+            QtWidgets.QStyle.SubControl.SC_SliderHandle,
+            self,
+        )
+
+        min_val = self.minimum()
+        max_val = self.maximum()
+        span = groove_rect.width() - handle_rect.width()
+        if span <= 0:
+            return
+
+        half_handle = handle_rect.width() / 2.0
+        y_center = groove_rect.center().y()
+        marker_w = 4.0
+        marker_h = 13.0
+
+        for slice_idx, count in self._annotated_slices.items():
+            if slice_idx < min_val or slice_idx > max_val:
+                continue
+            x_pos = QtWidgets.QStyle.sliderPositionFromValue(
+                min_val, max_val, slice_idx, span, opt.upsideDown
+            )
+            cx = groove_rect.x() + half_handle + x_pos
+            rect = QtCore.QRectF(
+                cx - marker_w / 2.0,
+                y_center - marker_h / 2.0,
+                marker_w,
+                marker_h,
+            )
+            painter.setBrush(QtGui.QColor("#FF9F0A"))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#C77700"), 1.0))
+            painter.drawRoundedRect(rect, 2.0, 2.0)
 
 
 class RawZSlider(QtWidgets.QWidget):
@@ -20,6 +87,7 @@ class RawZSlider(QtWidgets.QWidget):
         super().__init__(parent)
         self.file_info: Optional[RawFileInfo] = None
         self._current_z: int = 0
+        self._annotated_slices: Dict[int, int] = {}
         self._setup_ui()
 
     def _setup_ui(self):
@@ -157,8 +225,8 @@ class RawZSlider(QtWidgets.QWidget):
         )
         right_layout.addWidget(self._title_label)
 
-        # Slider
-        self._slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        # Slider with annotation markers
+        self._slider = _AnnotatedSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 0)
         self._slider.setValue(0)
         self._slider.setTracking(True)
@@ -188,6 +256,36 @@ class RawZSlider(QtWidgets.QWidget):
         """)
         self._slider.valueChanged.connect(self._on_slider_value_changed)
         right_layout.addWidget(self._slider, 1)
+
+        # Previous annotated slice button
+        self._prev_annotated_btn = QtWidgets.QToolButton()
+        self._prev_annotated_btn.setText("⏮")
+        self._prev_annotated_btn.setToolTip(
+            self.tr("上一个标注层 (Alt+[ / Ctrl+PageUp)")
+        )
+        self._prev_annotated_btn.setFixedSize(26, 24)
+        self._prev_annotated_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._prev_annotated_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {t['surface']};
+                border: 1px solid {t['border_light']};
+                border-radius: 4px;
+                color: {t['text']};
+                font-size: 11px;
+            }}
+            QToolButton:hover {{
+                background-color: {t['surface_hover']};
+            }}
+            QToolButton:pressed {{
+                background-color: {t['surface_pressed']};
+            }}
+            QToolButton:disabled {{
+                color: {t['text_secondary']};
+                border-color: {t['border']};
+            }}
+        """)
+        self._prev_annotated_btn.clicked.connect(self.jump_to_prev_annotated)
+        right_layout.addWidget(self._prev_annotated_btn)
 
         # Previous slice button
         self._prev_btn = QtWidgets.QToolButton()
@@ -267,6 +365,56 @@ class RawZSlider(QtWidgets.QWidget):
         self._next_btn.clicked.connect(self.next_slice)
         right_layout.addWidget(self._next_btn)
 
+        # Next annotated slice button
+        self._next_annotated_btn = QtWidgets.QToolButton()
+        self._next_annotated_btn.setText("⏭")
+        self._next_annotated_btn.setToolTip(
+            self.tr("下一个标注层 (Alt+] / Ctrl+PageDown)")
+        )
+        self._next_annotated_btn.setFixedSize(26, 24)
+        self._next_annotated_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._next_annotated_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {t['surface']};
+                border: 1px solid {t['border_light']};
+                border-radius: 4px;
+                color: {t['text']};
+                font-size: 11px;
+            }}
+            QToolButton:hover {{
+                background-color: {t['surface_hover']};
+            }}
+            QToolButton:pressed {{
+                background-color: {t['surface_pressed']};
+            }}
+            QToolButton:disabled {{
+                color: {t['text_secondary']};
+                border-color: {t['border']};
+            }}
+        """)
+        self._next_annotated_btn.clicked.connect(self.jump_to_next_annotated)
+        right_layout.addWidget(self._next_annotated_btn)
+
+        # Annotated slices summary badge & jump menu
+        self._annotated_btn = QtWidgets.QPushButton(self.tr("🏷️ 无标注"))
+        self._annotated_btn.setToolTip(
+            self.tr("查看体数据所有已标注层 (点击快速跳转)")
+        )
+        self._annotated_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._annotated_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t['background']};
+                border: 1px solid {t['border_light']};
+                border-radius: 4px;
+                color: {t['text_secondary']};
+                font-size: 11px;
+                padding: 2px 7px;
+                min-height: 22px;
+            }}
+        """)
+        self._annotated_btn.clicked.connect(self._show_annotated_menu)
+        right_layout.addWidget(self._annotated_btn)
+
         # Info label
         self._info_label = QtWidgets.QLabel()
         self._info_label.setStyleSheet(
@@ -317,7 +465,12 @@ class RawZSlider(QtWidgets.QWidget):
             f"📍 X: {x}   Y: {y}   {z_str}   |   值: {val_str}"
         )
 
-    def set_volume_info(self, info: RawFileInfo, initial_z: int = 0):
+    def set_volume_info(
+        self,
+        info: RawFileInfo,
+        initial_z: int = 0,
+        annotated_slices: Optional[Union[Dict[int, int], Set[int], List[int]]] = None,
+    ):
         """Configure slider with volume metadata and set current slice."""
         self.file_info = info
         depth = max(1, info.depth)
@@ -333,8 +486,144 @@ class RawZSlider(QtWidgets.QWidget):
             self._edit.setText(str(target_z))
 
         self._current_z = target_z
-        self._update_info_display()
+        if annotated_slices is not None:
+            self.set_annotated_slices(annotated_slices)
+        else:
+            self._update_annotated_badge()
+            self._update_info_display()
+            self._update_button_states()
+
+    def set_annotated_slices(
+        self, slices: Union[Dict[int, int], Set[int], List[int]]
+    ):
+        """Update the set/dict of slices that contain annotations."""
+        if isinstance(slices, dict):
+            self._annotated_slices = {
+                int(k): int(v) for k, v in slices.items() if v > 0
+            }
+        else:
+            self._annotated_slices = {int(z): 1 for z in slices}
+
+        self._slider.set_annotated_slices(self._annotated_slices)
+        self._update_annotated_badge()
         self._update_button_states()
+        self._update_info_display()
+
+    def get_annotated_slices(self) -> Dict[int, int]:
+        """Return dict of {slice_index: count} for annotated slices."""
+        return dict(self._annotated_slices)
+
+    def jump_to_prev_annotated(self):
+        """Jump to the nearest annotated slice with z < current_z."""
+        candidates = [z for z in self._annotated_slices if z < self._current_z]
+        if candidates:
+            self.set_z_and_emit(max(candidates))
+
+    def jump_to_next_annotated(self):
+        """Jump to the nearest annotated slice with z > current_z."""
+        candidates = [z for z in self._annotated_slices if z > self._current_z]
+        if candidates:
+            self.set_z_and_emit(min(candidates))
+
+    def _update_annotated_badge(self):
+        t = get_theme()
+        sorted_slices = sorted(self._annotated_slices.keys())
+        total_annotated = len(sorted_slices)
+
+        if total_annotated == 0:
+            self._annotated_btn.setText(self.tr("🏷️ 无标注"))
+            self._annotated_btn.setToolTip(self.tr("当前体数据暂无标注层"))
+            self._annotated_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {t['background']};
+                    border: 1px solid {t['border_light']};
+                    border-radius: 4px;
+                    color: {t['text_secondary']};
+                    font-size: 11px;
+                    padding: 2px 7px;
+                    min-height: 22px;
+                }}
+                QPushButton:hover {{
+                    border-color: {t['border']};
+                }}
+            """)
+            return
+
+        total_shapes = sum(self._annotated_slices.values())
+        btn_text = f"🏷️ {total_annotated}层已标注"
+        self._annotated_btn.setText(btn_text)
+
+        lines = [
+            self.tr(
+                "体数据已标注切片 (共 {count} 层, {shapes} 个对象，点击选择跳转):"
+            ).format(count=total_annotated, shapes=total_shapes)
+        ]
+        for z in sorted_slices[:25]:
+            phys_z = (
+                self.file_info.get_slice_z_coord(z)
+                if self.file_info
+                else None
+            )
+            phys_str = f", Z={phys_z:.2f}" if phys_z is not None else ""
+            cnt = self._annotated_slices[z]
+            lines.append(f"  • 切片 #{z} (第 {z + 1} 层{phys_str}): {cnt} 个标注")
+        if total_annotated > 25:
+            lines.append(f"  ... 另有 {total_annotated - 25} 层")
+
+        self._annotated_btn.setToolTip("\n".join(lines))
+        self._annotated_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: rgba(255, 159, 10, 0.12);
+                border: 1px solid #FF9F0A;
+                border-radius: 4px;
+                color: #FF9F0A;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 2px 7px;
+                min-height: 22px;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(255, 159, 10, 0.25);
+                border-color: #FFAE33;
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(255, 159, 10, 0.35);
+            }}
+        """)
+
+    def _show_annotated_menu(self):
+        sorted_slices = sorted(self._annotated_slices.keys())
+        if not sorted_slices:
+            QtWidgets.QToolTip.showText(
+                self._annotated_btn.mapToGlobal(
+                    QtCore.QPoint(0, self._annotated_btn.height())
+                ),
+                self.tr("当前体数据暂无标注层"),
+                self._annotated_btn,
+            )
+            return
+
+        menu = QtWidgets.QMenu(self)
+        for z in sorted_slices:
+            phys_z = (
+                self.file_info.get_slice_z_coord(z)
+                if self.file_info
+                else None
+            )
+            phys_str = f" (Z={phys_z:.2f})" if phys_z is not None else ""
+            cnt = self._annotated_slices[z]
+            is_cur = "● " if z == self._current_z else "   "
+            title = f"{is_cur}切片 #{z} (第 {z + 1} 层{phys_str})  —  {cnt} 个标注"
+            action = menu.addAction(title)
+            action.triggered.connect(
+                lambda checked=False, target_z=z: self.set_z_and_emit(target_z)
+            )
+
+        menu.exec(
+            self._annotated_btn.mapToGlobal(
+                QtCore.QPoint(0, self._annotated_btn.height())
+            )
+        )
 
     def set_current_z(self, z: int):
         """Update current Z without emitting z_changed."""
@@ -418,17 +707,27 @@ class RawZSlider(QtWidgets.QWidget):
         if self.file_info.pixel_width > 0:
             voxel_str = f" | {self.file_info.pixel_width:.1f} {self.file_info.unit}"
 
+        ann_cnt = self._annotated_slices.get(slice_idx, 0)
+        ann_str = f" [★ {ann_cnt}个标注]" if ann_cnt > 0 else ""
+
         self._info_label.setText(
-            f"切片: {slice_idx + 1}/{total_depth} ({z_str}) | {dim_str}{voxel_str}"
+            f"切片: {slice_idx + 1}/{total_depth} ({z_str}){ann_str} | {dim_str}{voxel_str}"
         )
 
     def _update_button_states(self):
         if not self.file_info:
             self._prev_btn.setEnabled(False)
             self._next_btn.setEnabled(False)
+            self._prev_annotated_btn.setEnabled(False)
+            self._next_annotated_btn.setEnabled(False)
             return
         self._prev_btn.setEnabled(self._current_z > 0)
         self._next_btn.setEnabled(self._current_z < self.file_info.depth - 1)
+
+        has_prev_ann = any(z < self._current_z for z in self._annotated_slices)
+        has_next_ann = any(z > self._current_z for z in self._annotated_slices)
+        self._prev_annotated_btn.setEnabled(has_prev_ann)
+        self._next_annotated_btn.setEnabled(has_next_ann)
 
     def wheelEvent(self, event):
         """Scroll wheel adjusts Z slice when hovering over slider widget."""

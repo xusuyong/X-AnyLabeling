@@ -3,9 +3,10 @@ import tempfile
 import unittest
 import numpy as np
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 from anylabeling.views.labeling.utils.raw_reader import (
     parse_raw_file_info,
+    RawFileInfo,
     RawVolume,
     slice_to_png_bytes,
     slice_to_qimage,
@@ -158,6 +159,57 @@ class TestRawVolume(unittest.TestCase):
         slider.set_voxel_info(100, 150, 45, 180, phys_z=163.0, unit="µm")
         self.assertIn("100", slider._voxel_info_label.text())
         self.assertIn("180", slider._voxel_info_label.text())
+
+    def test_raw_z_slider_annotated_slices(self):
+        slider = RawZSlider()
+        info = RawFileInfo(
+            file_path="test.raw",
+            file_name="test.raw",
+            file_length=500000,
+            width=100,
+            height=100,
+            depth=50,
+            data_type="uint8",
+            pixel_width=1.0,
+            pixel_height=1.0,
+            pixel_depth=2.0,
+            unit="µm",
+        )
+        slider.set_volume_info(info, initial_z=10)
+
+        # Initially no annotations
+        self.assertEqual(slider.get_annotated_slices(), {})
+        self.assertIn("无标注", slider._annotated_btn.text())
+        self.assertFalse(slider._prev_annotated_btn.isEnabled())
+        self.assertFalse(slider._next_annotated_btn.isEnabled())
+
+        # Set annotations on slices 5, 10, 25
+        slider.set_annotated_slices({5: 2, 10: 1, 25: 4})
+        self.assertEqual(slider.get_annotated_slices(), {5: 2, 10: 1, 25: 4})
+        self.assertIn("3层已标注", slider._annotated_btn.text())
+        self.assertIn("★ 1个标注", slider._info_label.text())
+
+        # Currently at z=10. Slices < 10: 5; slices > 10: 25.
+        self.assertTrue(slider._prev_annotated_btn.isEnabled())
+        self.assertTrue(slider._next_annotated_btn.isEnabled())
+
+        # Jump to prev annotated
+        slider.jump_to_prev_annotated()
+        self.assertEqual(slider.get_current_z(), 5)
+        self.assertFalse(slider._prev_annotated_btn.isEnabled())
+        self.assertTrue(slider._next_annotated_btn.isEnabled())
+
+        # Jump to next annotated
+        slider.jump_to_next_annotated()
+        self.assertEqual(slider.get_current_z(), 10)
+        slider.jump_to_next_annotated()
+        self.assertEqual(slider.get_current_z(), 25)
+        self.assertFalse(slider._next_annotated_btn.isEnabled())
+
+        # Test slider render with markers (paintEvent)
+        pm = QtGui.QPixmap(400, 30)
+        slider._slider.render(pm)
+        self.assertEqual(pm.size().width(), 400)
 
     def test_raw_orthogonal_views_dialog(self):
         w, h, d = 30, 20, 10
