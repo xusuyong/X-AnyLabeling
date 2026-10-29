@@ -558,6 +558,18 @@ class LabelingWidget(LabelDialog):
             z_shortcut = QtGui.QShortcut(QtGui.QKeySequence(_seq), self)
             z_shortcut.activated.connect(lambda s=_step: self._raw_z_step(s))
 
+        # Jump between annotated slices (Alt+[ / Alt+] and Ctrl+PageUp / Ctrl+PageDown)
+        for _seq, _direction in (
+            ("Alt+[", -1),
+            ("Alt+]", 1),
+            ("Ctrl+PageUp", -1),
+            ("Ctrl+PageDown", 1),
+        ):
+            ann_sc = QtGui.QShortcut(QtGui.QKeySequence(_seq), self)
+            ann_sc.activated.connect(
+                lambda d=_direction: self._raw_annotated_step(d)
+            )
+
         from .widgets.raw_orthogonal_dialog import (
             OrthogonalCanvasWidget,
             RawOrthoCornerWidget,
@@ -3296,6 +3308,9 @@ class LabelingWidget(LabelDialog):
         # Even if we autosave the file, we keep the ability to undo
         self.actions.undo.setEnabled(self.canvas.is_shape_restorable)
 
+        if self.raw_volume is not None:
+            self.update_raw_annotated_slices()
+
         if self._config["auto_save"]:
             label_file = osp.splitext(self.image_path)[0] + ".json"
             if self.output_dir:
@@ -3441,6 +3456,7 @@ class LabelingWidget(LabelDialog):
         self.raw_current_z = 0
         self.raw_slice_shapes = {}
         if hasattr(self, "raw_z_slider"):
+            self.raw_z_slider.set_annotated_slices({})
             self.raw_z_slider.hide()
         self._reset_label_loop()
         self.select_loop_count = -1
@@ -6491,6 +6507,7 @@ class LabelingWidget(LabelDialog):
             self.set_clean()
 
         self.raw_z_slider.set_current_z(self.raw_current_z)
+        self.update_raw_annotated_slices()
         self.update_raw_orthogonal_views()
         self.paint_canvas()
 
@@ -6560,6 +6577,54 @@ class LabelingWidget(LabelDialog):
             self.raw_z_slider.prev_slice()
         else:
             self.raw_z_slider.next_slice()
+
+    def _raw_annotated_step(self, step: int):
+        """Jump to the previous or next annotated RAW slice."""
+        if (
+            self.raw_volume is None
+            or not hasattr(self, "raw_z_slider")
+            or not self.raw_z_slider.isVisible()
+        ):
+            return
+        if step < 0:
+            self.raw_z_slider.jump_to_prev_annotated()
+        else:
+            self.raw_z_slider.jump_to_next_annotated()
+
+    def update_raw_annotated_slices(self):
+        """Update RawZSlider with currently annotated slice mapping."""
+        if (
+            not hasattr(self, "raw_z_slider")
+            or self.raw_volume is None
+            or self.raw_info is None
+        ):
+            return
+
+        current_shapes = []
+        for item in self.label_list:
+            sh = item.shape()
+            if sh.label not in [
+                AutoLabelingMode.OBJECT,
+                AutoLabelingMode.ADD,
+                AutoLabelingMode.REMOVE,
+            ]:
+                sh.other_data["slice_index"] = self.raw_current_z
+                phys_z = self.raw_info.get_slice_z_coord(self.raw_current_z)
+                if phys_z is not None:
+                    sh.other_data["z"] = phys_z
+                current_shapes.append(sh)
+
+        if current_shapes:
+            self.raw_slice_shapes[self.raw_current_z] = current_shapes
+        else:
+            self.raw_slice_shapes.pop(self.raw_current_z, None)
+
+        annotated_map = {
+            z_idx: len(shapes)
+            for z_idx, shapes in self.raw_slice_shapes.items()
+            if len(shapes) > 0
+        }
+        self.raw_z_slider.set_annotated_slices(annotated_map)
 
     def toggle_raw_orthogonal_views(self, show: bool = True):
         """Toggle 3D RAW volume orthogonal side views (XZ below XY, YZ to the right of XY)."""
@@ -7065,6 +7130,7 @@ class LabelingWidget(LabelDialog):
             self.raw_z_slider.set_volume_info(self.raw_info, self.raw_current_z)
             self.raw_z_slider.show()
             self.update_raw_orthogonal_views()
+            self.update_raw_annotated_slices()
         else:
             self.raw_z_slider.hide()
             self.toggle_raw_orthogonal_views(False)
