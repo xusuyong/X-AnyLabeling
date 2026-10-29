@@ -2637,12 +2637,16 @@ class LabelingWidget(LabelDialog):
                 self.raw_bottom_splitter.blockSignals(True)
                 self.raw_bottom_splitter.setSizes(self.raw_top_splitter.sizes())
                 self.raw_bottom_splitter.blockSignals(False)
+            if getattr(self, "zoom_mode", None) == self.FIT_WINDOW:
+                self.adjust_scale()
 
         def _sync_bottom_splitter(pos, index):
             if hasattr(self, "raw_top_splitter") and self.raw_top_splitter.isVisible():
                 self.raw_top_splitter.blockSignals(True)
                 self.raw_top_splitter.setSizes(self.raw_bottom_splitter.sizes())
                 self.raw_top_splitter.blockSignals(False)
+            if getattr(self, "zoom_mode", None) == self.FIT_WINDOW:
+                self.adjust_scale()
 
         self.raw_top_splitter.splitterMoved.connect(_sync_top_splitter)
         self.raw_bottom_splitter.splitterMoved.connect(_sync_bottom_splitter)
@@ -2653,6 +2657,11 @@ class LabelingWidget(LabelDialog):
         self.raw_workspace_splitter.setHandleWidth(3)
         self.raw_workspace_splitter.addWidget(self.raw_top_splitter)
         self.raw_workspace_splitter.addWidget(self.raw_bottom_splitter)
+        self.raw_workspace_splitter.splitterMoved.connect(
+            lambda pos, index: self.adjust_scale()
+            if getattr(self, "zoom_mode", None) == self.FIT_WINDOW
+            else None
+        )
 
         # Hide side views by default
         self.raw_yz_view.hide()
@@ -6661,9 +6670,17 @@ class LabelingWidget(LabelDialog):
             # Activate crosshair mode for convenient ImageJ-style point clicking
             self.toggle_raw_crosshair(True)
             self.update_raw_orthogonal_views()
+
+            # Automatically adapt main view zoom to fit the current window
+            self.actions.fit_window.setChecked(True)
+            self.set_fit_window(True)
+            QtCore.QTimer.singleShot(0, lambda: self.set_fit_window(True))
         else:
             self.raw_yz_view.hide()
             self.raw_bottom_splitter.hide()
+            if getattr(self, "zoom_mode", None) == self.FIT_WINDOW:
+                self.set_fit_window(True)
+                QtCore.QTimer.singleShot(0, lambda: self.set_fit_window(True))
 
     def toggle_raw_crosshair(self, active: bool = True):
         """Toggle 3D RAW volume crosshair inspection mode on canvas."""
