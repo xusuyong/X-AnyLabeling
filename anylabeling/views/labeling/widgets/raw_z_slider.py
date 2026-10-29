@@ -514,16 +514,24 @@ class RawZSlider(QtWidgets.QWidget):
         return dict(self._annotated_slices)
 
     def jump_to_prev_annotated(self):
-        """Jump to the nearest annotated slice with z < current_z."""
+        """Jump to the nearest annotated slice with z < current_z, or wrap around to the last."""
+        if not self._annotated_slices:
+            return
         candidates = [z for z in self._annotated_slices if z < self._current_z]
         if candidates:
             self.set_z_and_emit(max(candidates))
+        else:
+            self.set_z_and_emit(max(self._annotated_slices.keys()))
 
     def jump_to_next_annotated(self):
-        """Jump to the nearest annotated slice with z > current_z."""
+        """Jump to the nearest annotated slice with z > current_z, or wrap around to the first."""
+        if not self._annotated_slices:
+            return
         candidates = [z for z in self._annotated_slices if z > self._current_z]
         if candidates:
             self.set_z_and_emit(min(candidates))
+        else:
+            self.set_z_and_emit(min(self._annotated_slices.keys()))
 
     def _update_annotated_badge(self):
         t = get_theme()
@@ -698,16 +706,13 @@ class RawZSlider(QtWidgets.QWidget):
 
         total_depth = self.file_info.depth
         slice_idx = self._current_z
-        phys_z = self.file_info.get_slice_z_coord(slice_idx)
-
-        z_str = f"Z: {phys_z}" if phys_z is not None else f"#{slice_idx}"
         dim_str = f"{self.file_info.width}×{self.file_info.height}"
 
         voxel_str = ""
         if self.file_info.pixel_width > 0:
             voxel_str = f" | {self.file_info.pixel_width:.1f} {self.file_info.unit}"
 
-        self._info_label.setText(f"切片: {slice_idx + 1}/{total_depth} ({z_str}) | {dim_str}{voxel_str}")
+        self._info_label.setText(f"切片: {slice_idx + 1}/{total_depth} | {dim_str}{voxel_str}")
 
     def _update_button_states(self):
         if not self.file_info:
@@ -719,10 +724,9 @@ class RawZSlider(QtWidgets.QWidget):
         self._prev_btn.setEnabled(self._current_z > 0)
         self._next_btn.setEnabled(self._current_z < self.file_info.depth - 1)
 
-        has_prev_ann = any(z < self._current_z for z in self._annotated_slices)
-        has_next_ann = any(z > self._current_z for z in self._annotated_slices)
-        self._prev_annotated_btn.setEnabled(has_prev_ann)
-        self._next_annotated_btn.setEnabled(has_next_ann)
+        has_ann = bool(self._annotated_slices)
+        self._prev_annotated_btn.setEnabled(has_ann)
+        self._next_annotated_btn.setEnabled(has_ann)
 
     def wheelEvent(self, event):
         """Scroll wheel adjusts Z slice when hovering over slider widget."""
