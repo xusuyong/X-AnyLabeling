@@ -921,6 +921,8 @@ class AutoLabelingWidget(QWidget):
                     "conf_threshold": 0.25,
                     "iou_threshold": 0.45,
                 }
+                if task == "pose":
+                    gen_config["kpt_threshold"] = 0.1
                 with open(config_file, "w", encoding="utf-8") as f:
                     yaml.dump(gen_config, f, allow_unicode=True)
                 logger.info(f"Auto-generated config: {config_file}")
