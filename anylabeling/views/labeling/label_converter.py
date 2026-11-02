@@ -641,10 +641,10 @@ class LabelConverter:
             cy = float(line[2])
             nw = float(line[3])
             nh = float(line[4])
-            xmin = int((cx - nw / 2) * img_w)
-            ymin = int((cy - nh / 2) * img_h)
-            xmax = int((cx + nw / 2) * img_w)
-            ymax = int((cy + nh / 2) * img_h)
+            xmin = (cx - nw / 2) * img_w
+            ymin = (cy - nh / 2) * img_h
+            xmax = (cx + nw / 2) * img_w
+            ymax = (cy + nh / 2) * img_h
             points = [
                 [xmin, ymin],
                 [xmax, ymin],
@@ -1522,8 +1522,8 @@ class LabelConverter:
                                 label += " 0 0"
                         else:
                             x, y, visible = keypoints[name]
-                            x = round((int(x) / image_width), 6)
-                            y = round((int(y) / image_height), 6)
+                            x = round(x / image_width, 6)
+                            y = round(y / image_height, 6)
                             if self.has_visible:
                                 label += f" {x} {y} {visible}"
                             else:
@@ -1817,8 +1817,6 @@ class LabelConverter:
                         else:
                             num_keypoints += 1
                             x, y, visible = data["keypoints"][name]
-                            x = int(x)
-                            y = int(y)
                             if self.has_visible:
                                 keypoints += [x, y, visible]
                             else:
