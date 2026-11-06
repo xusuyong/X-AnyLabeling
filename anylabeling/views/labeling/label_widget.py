@@ -6676,6 +6676,7 @@ class LabelingWidget(LabelDialog):
         self.raw_z_slider.set_orthogonal_view_checked(show)
 
         if show:
+            self.raw_volume.prefetch()
             self.raw_yz_view.show()
             self.raw_bottom_splitter.show()
             self.raw_xz_view.show()

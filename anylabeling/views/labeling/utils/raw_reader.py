@@ -8,9 +8,12 @@ CT square slice factorization, and manual configuration override.
 from __future__ import annotations
 
 import io
+import mmap
 import os
+from collections import OrderedDict
 from pathlib import Path
 import re
+import threading
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -295,6 +298,40 @@ class RawVolume:
         self.file_info = file_info
         self.use_memmap = use_memmap
         self.data: Optional[np.ndarray] = self._load_data()
+        # LRU caches for orthogonal slices (strided reads on a multi-GB memmap
+        # are expensive, and the same slice is requested repeatedly while the
+        # user scrolls Z).
+        self._slice_cache: "OrderedDict[tuple, np.ndarray]" = OrderedDict()
+        self._cache_lock = threading.Lock()
+        self._cache_max = 24
+
+    def _cache_get(self, key):
+        with self._cache_lock:
+            arr = self._slice_cache.get(key)
+            if arr is not None:
+                self._slice_cache.move_to_end(key)
+            return arr
+
+    def _cache_put(self, key, arr):
+        with self._cache_lock:
+            self._slice_cache[key] = arr
+            self._slice_cache.move_to_end(key)
+            while len(self._slice_cache) > self._cache_max:
+                self._slice_cache.popitem(last=False)
+
+    def prefetch(self):
+        """Ask the OS to asynchronously read the file into the page cache.
+
+        Sagittal/coronal extraction touches every page of the file; hinting
+        WILLNEED lets the kernel do sequential readahead instead of slow
+        random page faults.
+        """
+        mm = getattr(self.data, "_mmap", None)
+        if mm is not None and hasattr(mm, "madvise") and hasattr(mmap, "MADV_WILLNEED"):
+            try:
+                mm.madvise(mmap.MADV_WILLNEED)
+            except Exception:
+                pass
 
     def _load_data(self) -> np.ndarray:
         fi = self.file_info
@@ -332,6 +369,8 @@ class RawVolume:
             except Exception:
                 pass
         self.data = None
+        with self._cache_lock:
+            self._slice_cache.clear()
 
     @property
     def depth(self) -> int:
@@ -360,7 +399,13 @@ class RawVolume:
             shape = (self.depth, self.width, 3) if self.file_info.data_type == "rgb8" else (self.depth, self.width)
             return np.zeros(shape, dtype=np.uint8)
         y_idx = max(0, min(self.height - 1, y))
-        return np.ascontiguousarray(self.data[:, y_idx])
+        key = ("y", y_idx)
+        cached = self._cache_get(key)
+        if cached is not None:
+            return cached
+        arr = np.ascontiguousarray(self.data[:, y_idx])
+        self._cache_put(key, arr)
+        return arr
 
     def get_sagittal_slice(self, x: int) -> np.ndarray:
         """Extract sagittal (YZ plane at X index) slice oriented for side view (right of XY).
@@ -372,9 +417,15 @@ class RawVolume:
             shape = (self.height, self.depth, 3) if self.file_info.data_type == "rgb8" else (self.height, self.depth)
             return np.zeros(shape, dtype=np.uint8)
         x_idx = max(0, min(self.width - 1, x))
+        key = ("x", x_idx)
+        cached = self._cache_get(key)
+        if cached is not None:
+            return cached
         # Swap axes 0 and 1 so axis 0 is height (Y) and axis 1 is depth (Z)
         slice_yz = np.swapaxes(self.data[:, :, x_idx], 0, 1)
-        return np.ascontiguousarray(slice_yz)
+        arr = np.ascontiguousarray(slice_yz)
+        self._cache_put(key, arr)
+        return arr
 
     def get_voxel_value(self, x: int, y: int, z: int):
         """Get voxel value at (x, y, z)."""
@@ -390,6 +441,13 @@ def normalize_slice_to_uint8(slice_arr: np.ndarray) -> np.ndarray:
     """Normalize 8-bit, 16-bit or float slice array to 8-bit uint8 grayscale image."""
     if slice_arr.dtype == np.uint8 and len(slice_arr.shape) == 2:
         return slice_arr
+
+    if slice_arr.ndim == 2 and slice_arr.dtype in (np.uint16, np.int16, np.float32):
+        # cv2 path is ~10x faster than the numpy float pipeline.
+        src = np.ascontiguousarray(slice_arr)
+        if src.dtype.byteorder == ">":
+            src = src.astype(src.dtype.newbyteorder("="))
+        return cv2.normalize(src, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
     min_v, max_v = float(slice_arr.min()), float(slice_arr.max())
     if max_v <= min_v:
