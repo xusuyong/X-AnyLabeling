@@ -61,6 +61,7 @@ class OrthogonalCanvasWidget(QtWidgets.QWidget):
         cross_primary: int,
         cross_z: int,
         aspect_ratio_z: float = 1.0,
+        window: Optional[Tuple[float, float]] = None,
     ):
         """Update slice image and crosshair position.
 
@@ -74,7 +75,7 @@ class OrthogonalCanvasWidget(QtWidgets.QWidget):
             self.update()
             return
 
-        qimg = slice_to_qimage(slice_arr)
+        qimg = slice_to_qimage(slice_arr, window=window)
         if not qimg.isNull():
             self._pixmap = QtGui.QPixmap.fromImage(qimg)
             self._img_w = self._pixmap.width()

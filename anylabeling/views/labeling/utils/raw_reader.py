@@ -8,6 +8,9 @@ CT square slice factorization, and manual configuration override.
 from __future__ import annotations
 
 import io
+import mmap
+import threading
+from collections import OrderedDict
 import os
 from pathlib import Path
 import re
@@ -16,7 +19,7 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-from PyQt6 import QtGui
+from PyQt6 import QtCore, QtGui
 
 
 @dataclass
@@ -294,7 +297,17 @@ class RawVolume:
     def __init__(self, file_info: RawFileInfo, use_memmap: bool = True):
         self.file_info = file_info
         self.use_memmap = use_memmap
+        # Guards data access vs. close() (side slices are read from a worker thread)
+        self._lock = threading.RLock()
+        self._closed = False
+        self._close_pending = False
+        self._warmed_up = False
+        self._prefetched = False
+        self._coronal_cache: "OrderedDict[int, np.ndarray]" = OrderedDict()
+        self._sagittal_cache: "OrderedDict[int, np.ndarray]" = OrderedDict()
+        self._cache_size = 16
         self.data: Optional[np.ndarray] = self._load_data()
+        self.display_window: Optional[Tuple[float, float]] = self._compute_display_window()
 
     def _load_data(self) -> np.ndarray:
         fi = self.file_info
@@ -323,8 +336,31 @@ class RawVolume:
             arr = np.fromfile(f, dtype=dtype, count=count)
             return arr.reshape(shape)
 
-    def close(self):
-        """Release memmap and file handles (essential on Windows)."""
+    def _compute_display_window(self) -> Optional[Tuple[float, float]]:
+        """Sample the volume to compute a unified (vmin, vmax) display window for 16-bit/float data."""
+        if self.data is None or self.file_info.data_type in ("uint8", "rgb8"):
+            return None
+        try:
+            num_z = min(self.depth, 16)
+            z_indices = np.linspace(0, self.depth - 1, num_z, dtype=int)
+            step_y = max(1, self.height // 128)
+            step_x = max(1, self.width // 128)
+            samples = np.concatenate(
+                [self.data[int(z), ::step_y, ::step_x].ravel() for z in z_indices]
+            )
+            if samples.size == 0:
+                return None
+            p_low, p_high = np.percentile(samples, [0.5, 99.5])
+            vmin, vmax = float(p_low), float(p_high)
+            if vmax <= vmin:
+                vmin, vmax = float(samples.min()), float(samples.max())
+            return (vmin, vmax)
+        except Exception:
+            return None
+
+    def _release_resources_locked(self):
+        self._coronal_cache.clear()
+        self._sagittal_cache.clear()
         if hasattr(self, "data") and isinstance(self.data, np.memmap):
             try:
                 if hasattr(self.data, "_mmap") and self.data._mmap is not None:
@@ -332,6 +368,18 @@ class RawVolume:
             except Exception:
                 pass
         self.data = None
+        self._close_pending = False
+
+    def close(self):
+        """Release memmap and file handles without blocking UI if a worker is reading."""
+        self._closed = True
+        if self._lock.acquire(blocking=False):
+            try:
+                self._release_resources_locked()
+            finally:
+                self._lock.release()
+        else:
+            self._close_pending = True
 
     @property
     def depth(self) -> int:
@@ -352,29 +400,139 @@ class RawVolume:
         idx = max(0, min(self.depth - 1, slice_idx))
         return np.array(self.data[idx], copy=True)
 
+    def _cache_get(self, cache, key):
+        arr = cache.get(key)
+        if arr is not None:
+            cache.move_to_end(key)
+        return arr
+
+    def _cache_put(self, cache, key, arr):
+        cache[key] = arr
+        cache.move_to_end(key)
+        while len(cache) > self._cache_size:
+            cache.popitem(last=False)
+
     def get_coronal_slice(self, y: int) -> np.ndarray:
-        """Extract coronal (XZ plane at Y index) slice.
+        """Extract coronal (XZ plane at Y index) slice (LRU cached).
         Returns array of shape (depth, width) or (depth, width, 3).
         """
-        if self.data is None:
-            shape = (self.depth, self.width, 3) if self.file_info.data_type == "rgb8" else (self.depth, self.width)
-            return np.zeros(shape, dtype=np.uint8)
         y_idx = max(0, min(self.height - 1, y))
-        return np.ascontiguousarray(self.data[:, y_idx])
+        with self._lock:
+            if self._closed or self.data is None:
+                shape = (self.depth, self.width, 3) if self.file_info.data_type == "rgb8" else (self.depth, self.width)
+                return np.zeros(shape, dtype=np.uint8)
+            arr = self._cache_get(self._coronal_cache, y_idx)
+            if arr is not None:
+                return arr
 
-    def get_sagittal_slice(self, x: int) -> np.ndarray:
-        """Extract sagittal (YZ plane at X index) slice oriented for side view (right of XY).
+        # On a cold memmap, reading rows directly via unbuffered seek+read avoids
+        # triggering gigabytes of speculative OS page-cache readahead.
+        if not self._warmed_up and isinstance(self.data, np.memmap):
+            arr = self._read_coronal_direct(y_idx)
+            if arr is not None:
+                with self._lock:
+                    if self._close_pending:
+                        self._release_resources_locked()
+                        return arr
+                    if not self._closed:
+                        self._cache_put(self._coronal_cache, y_idx, arr)
+                return arr
+
+        with self._lock:
+            try:
+                if self._closed or self.data is None:
+                    shape = (self.depth, self.width, 3) if self.file_info.data_type == "rgb8" else (self.depth, self.width)
+                    return np.zeros(shape, dtype=np.uint8)
+                arr = self._cache_get(self._coronal_cache, y_idx)
+                if arr is None:
+                    arr = np.ascontiguousarray(self.data[:, y_idx])
+                    self._cache_put(self._coronal_cache, y_idx, arr)
+                return arr
+            finally:
+                if self._close_pending:
+                    self._release_resources_locked()
+
+    def _read_coronal_direct(self, y_idx: int) -> Optional[np.ndarray]:
+        """Read a single coronal slice directly from disk (~2MB I/O for 2GB volume)."""
+        fi = self.file_info
+        bpp = fi.bytes_per_voxel
+        dtype = fi.numpy_dtype
+        is_rgb = fi.data_type == "rgb8"
+        slice_bytes = fi.height * fi.width * bpp
+        row_bytes = fi.width * bpp
+        y_off = fi.offset + y_idx * row_bytes
+        out_shape = (fi.depth, fi.width, 3) if is_rgb else (fi.depth, fi.width)
+        row_shape = (fi.width, 3) if is_rgb else (fi.width,)
+        out = np.empty(out_shape, dtype=dtype)
+        try:
+            with open(fi.file_path, "rb", buffering=0) as f:
+                for z in range(fi.depth):
+                    if self._closed:
+                        return None
+                    f.seek(z * slice_bytes + y_off)
+                    buf = f.read(row_bytes)
+                    if len(buf) < row_bytes:
+                        return None
+                    out[z] = np.frombuffer(buf, dtype=dtype).reshape(row_shape)
+            return out
+        except Exception:
+            return None
+
+    def get_sagittal_slice(self, x: int, should_abort=None) -> Optional[np.ndarray]:
+        """Extract sagittal (YZ plane at X index) slice oriented for side view (LRU cached).
         Returns array of shape (height, depth) or (height, depth, 3), where:
         - vertical axis (rows) corresponds to Y (aligning with XY height),
         - horizontal axis (cols) corresponds to Z (depth).
+
+        The read is done in Z chunks; the lock is only held per chunk so the volume
+        can be closed promptly. If ``should_abort()`` turns true (or the volume is
+        closed) midway, returns None.
         """
-        if self.data is None:
-            shape = (self.height, self.depth, 3) if self.file_info.data_type == "rgb8" else (self.height, self.depth)
-            return np.zeros(shape, dtype=np.uint8)
         x_idx = max(0, min(self.width - 1, x))
-        # Swap axes 0 and 1 so axis 0 is height (Y) and axis 1 is depth (Z)
-        slice_yz = np.swapaxes(self.data[:, :, x_idx], 0, 1)
-        return np.ascontiguousarray(slice_yz)
+        is_rgb = self.file_info.data_type == "rgb8"
+        with self._lock:
+            if self._closed or self.data is None:
+                shape = (self.height, self.depth, 3) if is_rgb else (self.height, self.depth)
+                return np.zeros(shape, dtype=np.uint8)
+            arr = self._cache_get(self._sagittal_cache, x_idx)
+            if arr is not None:
+                return arr
+            out_shape = (self.height, self.depth, 3) if is_rgb else (self.height, self.depth)
+            out = np.empty(out_shape, dtype=self.data.dtype)
+
+        chunk = 16
+        for z0 in range(0, self.depth, chunk):
+            if should_abort is not None and should_abort():
+                with self._lock:
+                    if self._close_pending:
+                        self._release_resources_locked()
+                return None
+            with self._lock:
+                try:
+                    if self._closed or self.data is None:
+                        return None
+                    z1 = min(self.depth, z0 + chunk)
+                    out[:, z0:z1] = np.swapaxes(self.data[z0:z1, :, x_idx], 0, 1)
+                finally:
+                    if self._close_pending:
+                        self._release_resources_locked()
+        with self._lock:
+            if not self._closed:
+                self._cache_put(self._sagittal_cache, x_idx, out)
+                self._warmed_up = True
+        return out
+
+    def prefetch(self):
+        """Hint the OS to read the file in the background (non-blocking, once)."""
+        if self._prefetched or self._closed:
+            return
+        self._prefetched = True
+        try:
+            mm = getattr(self.data, "_mmap", None)
+            if mm is not None and hasattr(mm, "madvise") and hasattr(mmap, "MADV_WILLNEED"):
+                mm.madvise(mmap.MADV_WILLNEED)
+        except Exception:
+            pass
 
     def get_voxel_value(self, x: int, y: int, z: int):
         """Get voxel value at (x, y, z)."""
@@ -386,35 +544,46 @@ class RawVolume:
         return self.data[z_idx, y_idx, x_idx]
 
 
-def normalize_slice_to_uint8(slice_arr: np.ndarray) -> np.ndarray:
-    """Normalize 8-bit, 16-bit or float slice array to 8-bit uint8 grayscale image."""
-    if slice_arr.dtype == np.uint8 and len(slice_arr.shape) == 2:
+def normalize_slice_to_uint8(
+    slice_arr: np.ndarray,
+    window: Optional[Tuple[float, float]] = None,
+) -> np.ndarray:
+    """Normalize 8-bit, 16-bit or float slice array to 8-bit uint8 image."""
+    if slice_arr.dtype == np.uint8:
         return slice_arr
+    if window is not None:
+        vmin, vmax = window
+        if vmax <= vmin:
+            return np.zeros(slice_arr.shape, dtype=np.uint8)
+        scale = 255.0 / (vmax - vmin)
+        buf = slice_arr.astype(np.float32)
+        buf -= float(vmin)
+        buf *= scale
+        np.clip(buf, 0.0, 255.0, out=buf)
+        return buf.astype(np.uint8)
+    return cv2.normalize(
+        np.ascontiguousarray(slice_arr), None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
+    )
 
-    min_v, max_v = float(slice_arr.min()), float(slice_arr.max())
-    if max_v <= min_v:
-        max_v = min_v + 1.0
 
-    norm = np.clip(
-        (slice_arr.astype(np.float32) - min_v) / (max_v - min_v) * 255.0,
-        0,
-        255,
-    ).astype(np.uint8)
-    return norm
-
-
-def slice_to_png_bytes(slice_arr: np.ndarray) -> bytes:
+def slice_to_png_bytes(
+    slice_arr: np.ndarray,
+    window: Optional[Tuple[float, float]] = None,
+) -> bytes:
     """Convert a 2D slice numpy array to PNG-encoded bytes."""
-    norm = normalize_slice_to_uint8(slice_arr)
+    norm = normalize_slice_to_uint8(slice_arr, window=window)
     success, encoded = cv2.imencode(".png", norm)
     if success:
         return encoded.tobytes()
     return b""
 
 
-def slice_to_qimage(slice_arr: np.ndarray) -> QtGui.QImage:
+def slice_to_qimage(
+    slice_arr: np.ndarray,
+    window: Optional[Tuple[float, float]] = None,
+) -> QtGui.QImage:
     """Convert a 2D slice numpy array to QImage."""
-    norm = normalize_slice_to_uint8(slice_arr)
+    norm = normalize_slice_to_uint8(slice_arr, window=window)
     norm = np.ascontiguousarray(norm)
     if len(norm.shape) == 2:
         h, w = norm.shape
@@ -427,3 +596,70 @@ def slice_to_qimage(slice_arr: np.ndarray) -> QtGui.QImage:
             norm.data, w, h, norm.strides[0], QtGui.QImage.Format.Format_RGB888
         ).copy()
     return QtGui.QImage()
+
+
+
+class OrthoSliceLoader(QtCore.QObject):
+    """Loads coronal/sagittal slices off the UI thread (latest request wins)."""
+
+    # volume, y, coronal
+    coronal_ready = QtCore.pyqtSignal(object, int, object)
+    # volume, x, sagittal
+    sagittal_ready = QtCore.pyqtSignal(object, int, object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cond = threading.Condition()
+        self._pending = None
+        self._running = False
+
+    def request(self, volume: "RawVolume", x: int, y: int):
+        with self._cond:
+            self._pending = (volume, x, y)
+            if not self._running:
+                self._running = True
+                threading.Thread(target=self._run, daemon=True).start()
+
+    def cancel(self):
+        with self._cond:
+            self._pending = None
+
+    def _has_newer_or_closed(self, volume: "RawVolume") -> bool:
+        if volume._closed:
+            return True
+        with self._cond:
+            return self._pending is not None
+
+    def _run(self):
+        while True:
+            with self._cond:
+                job = self._pending
+                self._pending = None
+                if job is None:
+                    self._running = False
+                    return
+            volume, x, y = job
+            if volume._closed:
+                continue
+
+            # 1. Coronal (XZ): fast direct read (~2MB I/O)
+            try:
+                cor = volume.get_coronal_slice(y)
+            except Exception:
+                cor = None
+            if cor is not None and not volume._closed:
+                self.coronal_ready.emit(volume, y, cor)
+
+            if self._has_newer_or_closed(volume):
+                continue
+
+            # 2. Full-res Sagittal (YZ) with OS prefetch
+            try:
+                volume.prefetch()
+                sag = volume.get_sagittal_slice(
+                    x, should_abort=lambda: self._has_newer_or_closed(volume)
+                )
+            except Exception:
+                sag = None
+            if sag is not None and not volume._closed:
+                self.sagittal_ready.emit(volume, x, sag)

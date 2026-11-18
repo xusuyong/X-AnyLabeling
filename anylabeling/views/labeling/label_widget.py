@@ -3476,6 +3476,14 @@ class LabelingWidget(LabelDialog):
         self.statusBar().showMessage(message, delay)
 
     def reset_state(self):
+        if getattr(self, "_raw_ortho_loader", None) is not None:
+            self._raw_ortho_loader.cancel()
+        self._raw_side_key = None
+        if getattr(self, "raw_ortho_active", False):
+            if hasattr(self, "raw_xz_view"):
+                self.raw_xz_view.set_slice_data(None, 0, 0)
+            if hasattr(self, "raw_yz_view"):
+                self.raw_yz_view.set_slice_data(None, 0, 0)
         if hasattr(self, "raw_volume") and self.raw_volume is not None:
             self.raw_volume.close()
             self.raw_volume = None
@@ -6472,7 +6480,13 @@ class LabelingWidget(LabelDialog):
         if new_z < 0 or new_z >= self.raw_volume.depth:
             return
 
-        from .utils.raw_reader import slice_to_png_bytes, slice_to_qimage
+        import PIL.Image
+
+        from .utils.raw_reader import (
+            normalize_slice_to_uint8,
+            slice_to_png_bytes,
+            slice_to_qimage,
+        )
 
         was_dirty = self.dirty
 
@@ -6501,16 +6515,17 @@ class LabelingWidget(LabelDialog):
 
         # 4. Extract new slice
         slice_arr = self.raw_volume.get_axial_slice(self.raw_current_z)
-        qimage = slice_to_qimage(slice_arr)
+        window = self.raw_volume.display_window
+        qimage = slice_to_qimage(slice_arr, window=window)
         self.image = qimage
-        self.image_data = slice_to_png_bytes(slice_arr)
+        self.image_data = slice_to_png_bytes(slice_arr, window=window)
 
         # 5. Handle brightness / contrast
         brightness, contrast = self.brightness_contrast_values.get(
             self.filename, (None, None)
         )
         self.brightness_contrast_processor.update_image(
-            utils.img_data_to_pil(self.image_data)
+            PIL.Image.fromarray(normalize_slice_to_uint8(slice_arr, window=window))
         )
         if brightness is not None or contrast is not None:
             adj_img = self.brightness_contrast_processor.adjust(
@@ -6546,6 +6561,45 @@ class LabelingWidget(LabelDialog):
         self.update_raw_orthogonal_views()
         self.paint_canvas()
 
+    def _get_raw_ortho_loader(self):
+        loader = getattr(self, "_raw_ortho_loader", None)
+        if loader is None:
+            from .utils.raw_reader import OrthoSliceLoader
+
+            loader = OrthoSliceLoader(self)
+            loader.coronal_ready.connect(self._on_raw_coronal_ready)
+            loader.sagittal_ready.connect(self._on_raw_sagittal_ready)
+            self._raw_ortho_loader = loader
+        return loader
+
+    def _on_raw_coronal_ready(self, volume, y, coronal):
+        if volume is not self.raw_volume or not self.raw_ortho_active:
+            return
+        if y != self.raw_inspection_y:
+            return  # stale; a newer request is in flight
+        aspect_z = getattr(self, "_raw_aspect_z", 1.0)
+        self.raw_xz_view.set_slice_data(
+            coronal,
+            self.raw_inspection_x,
+            self.raw_current_z,
+            aspect_ratio_z=aspect_z,
+            window=volume.display_window,
+        )
+
+    def _on_raw_sagittal_ready(self, volume, x, sagittal):
+        if volume is not self.raw_volume or not self.raw_ortho_active:
+            return
+        if x != self.raw_inspection_x:
+            return  # stale; a newer request is in flight
+        aspect_z = getattr(self, "_raw_aspect_z", 1.0)
+        self.raw_yz_view.set_slice_data(
+            sagittal,
+            self.raw_inspection_y,
+            self.raw_current_z,
+            aspect_ratio_z=aspect_z,
+            window=volume.display_window,
+        )
+
     def update_raw_orthogonal_views(self):
         """Update side views (XZ below, YZ right) and coordinate readout."""
         if self.raw_volume is None or self.raw_info is None:
@@ -6572,21 +6626,21 @@ class LabelingWidget(LabelDialog):
 
         # If orthogonal views are active, update side views & corner widget
         if getattr(self, "raw_ortho_active", False):
-            coronal = self.raw_volume.get_coronal_slice(self.raw_inspection_y)
-            self.raw_xz_view.set_slice_data(
-                coronal,
-                self.raw_inspection_x,
-                self.raw_current_z,
-                aspect_ratio_z=aspect_z,
-            )
-
-            sagittal = self.raw_volume.get_sagittal_slice(self.raw_inspection_x)
-            self.raw_yz_view.set_slice_data(
-                sagittal,
-                self.raw_inspection_y,
-                self.raw_current_z,
-                aspect_ratio_z=aspect_z,
-            )
+            # Z change only moves the crosshair; slices are re-read only when X/Y change
+            self._raw_aspect_z = aspect_z
+            self.raw_xz_view.update_crosshair(self.raw_inspection_x, self.raw_current_z)
+            self.raw_yz_view.update_crosshair(self.raw_inspection_y, self.raw_current_z)
+            key = (self.raw_volume, self.raw_inspection_x, self.raw_inspection_y)
+            last = getattr(self, "_raw_side_key", None)
+            if (
+                last is None
+                or last[0] is not key[0]
+                or last[1:] != key[1:]
+            ):
+                self._raw_side_key = key
+                self._get_raw_ortho_loader().request(
+                    self.raw_volume, self.raw_inspection_x, self.raw_inspection_y
+                )
 
             self.raw_corner_widget.set_volume_info(self.raw_info)
             self.raw_corner_widget.set_coordinates(
@@ -6673,6 +6727,7 @@ class LabelingWidget(LabelDialog):
             return
 
         self.raw_ortho_active = show
+        self._raw_side_key = None
         self.raw_z_slider.set_orthogonal_view_checked(show)
 
         if show:
@@ -6959,6 +7014,7 @@ class LabelingWidget(LabelDialog):
             self.raw_info = parse_raw_file_info(filename)
             if self.raw_info:
                 self.raw_volume = RawVolume(self.raw_info, use_memmap=True)
+                self._raw_side_key = None
 
         if QtCore.QFile.exists(label_file) and LabelFile.is_label_file(
             label_file
@@ -7007,9 +7063,10 @@ class LabelingWidget(LabelDialog):
                     initial_z = 0
                 self.raw_current_z = initial_z
                 slice_arr = self.raw_volume.get_axial_slice(self.raw_current_z)
-                self.image_data = slice_to_png_bytes(slice_arr)
+                window = self.raw_volume.display_window
+                self.image_data = slice_to_png_bytes(slice_arr, window=window)
                 self.image_path = filename
-                image = slice_to_qimage(slice_arr)
+                image = slice_to_qimage(slice_arr, window=window)
             else:
                 image = utils.img_data_to_qimage(self.image_data, filename)
         else:
@@ -7017,9 +7074,10 @@ class LabelingWidget(LabelDialog):
                 self.raw_slice_shapes = {}
                 self.raw_current_z = 0
                 slice_arr = self.raw_volume.get_axial_slice(0)
-                self.image_data = slice_to_png_bytes(slice_arr)
+                window = self.raw_volume.display_window
+                self.image_data = slice_to_png_bytes(slice_arr, window=window)
                 self.image_path = filename
-                image = slice_to_qimage(slice_arr)
+                image = slice_to_qimage(slice_arr, window=window)
                 self.label_file = None
                 self.other_data = {CHECKED_FIELD: False}
                 with QtCore.QSignalBlocker(self.shape_text_edit):
