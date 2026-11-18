@@ -80,14 +80,20 @@ class RawFileInfo:
         return None
 
 
+_PATTERN_3D = re.compile(r"(?<!\d)(\d{2,5})[-_xX](\d{2,5})[-_xX](\d{1,5})(?!\d)")
+_PATTERN_2D = re.compile(r"(?<!\d)(\d{2,5})[-_xX](\d{2,5})(?!\d)")
+_PATTERN_UNIT = re.compile(
+    r"[-_](\d+(?:\.\d+)?)\s*(um|µm|nm|mm|cm|m)\b", re.IGNORECASE
+)
+_PATTERN_Z_RANGE = re.compile(r"[-_]Z(\d+)[-_](\d+)(?:[-_]|$)", re.IGNORECASE)
+
+
 def match_3d_pattern(text: str, file_length: int) -> Optional[Tuple[int, int, int, str, int]]:
     """Match 3D dimension pattern (e.g. 300x300x97, 512-512-100) from text and test against file size."""
     if not text or not text.strip():
         return None
 
-    # Pattern: (?<!\d)(\d{2,5})[-_xX](\d{2,5})[-_xX](\d{1,5})(?!\d)
-    pattern = re.compile(r"(?<!\d)(\d{2,5})[-_xX](\d{2,5})[-_xX](\d{1,5})(?!\d)")
-    for match in pattern.finditer(text):
+    for match in _PATTERN_3D.finditer(text):
         try:
             w = int(match.group(1))
             h = int(match.group(2))
@@ -141,8 +147,7 @@ def match_2d_pattern(text: str, file_length: int) -> Optional[Tuple[int, int, in
     if not text or not text.strip():
         return None
 
-    pattern = re.compile(r"(?<!\d)(\d{2,5})[-_xX](\d{2,5})(?!\d)")
-    for match in pattern.finditer(text):
+    for match in _PATTERN_2D.finditer(text):
         try:
             w = int(match.group(1))
             h = int(match.group(2))
@@ -211,11 +216,10 @@ def parse_raw_file_info(file_path: str | Path) -> Optional[RawFileInfo]:
     # 3. Try sibling files in the same directory
     if cand is None:
         try:
-            parent_dir = path.parent
-            if parent_dir.is_dir():
-                for sib in parent_dir.iterdir():
-                    if sib.is_file() and sib.name != name:
-                        cand = match_3d_pattern(sib.name, file_length)
+            with os.scandir(path.parent) as entries:
+                for entry in entries:
+                    if entry.name != name and entry.is_file():
+                        cand = match_3d_pattern(entry.name, file_length)
                         if cand is not None:
                             break
         except OSError:
@@ -241,12 +245,9 @@ def parse_raw_file_info(file_path: str | Path) -> Optional[RawFileInfo]:
     # Extract voxel size, e.g. -5um, _5um, -0.5um, -6mm
     unit = "px"
     v_size = 1.0
-    p_unit = re.compile(
-        r"[-_](\d+(?:\.\d+)?)\s*(um|µm|nm|mm|cm|m)\b", re.IGNORECASE
-    )
-    m_unit = p_unit.search(name)
+    m_unit = _PATTERN_UNIT.search(name)
     if not m_unit:
-        m_unit = p_unit.search(str(path.resolve()))
+        m_unit = _PATTERN_UNIT.search(str(path.resolve()))
     if m_unit:
         try:
             v_size = float(m_unit.group(1))
@@ -261,7 +262,7 @@ def parse_raw_file_info(file_path: str | Path) -> Optional[RawFileInfo]:
     # Extract Z coordinate range if present, e.g. _Z118-214_
     start_z = None
     end_z = None
-    m_z = re.search(r"[-_]Z(\d+)[-_](\d+)(?:[-_]|$)", name, re.IGNORECASE)
+    m_z = _PATTERN_Z_RANGE.search(name)
     if m_z:
         try:
             sz = int(m_z.group(1))
