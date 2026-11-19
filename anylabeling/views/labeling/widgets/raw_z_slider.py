@@ -712,7 +712,7 @@ class RawZSlider(QtWidgets.QWidget):
         if self.file_info.pixel_width > 0:
             voxel_str = f" | {self.file_info.pixel_width:.1f} {self.file_info.unit}"
 
-        self._info_label.setText(f"切片: {slice_idx + 1}/{total_depth} | {dim_str}{voxel_str}")
+        self._info_label.setText(f"切片: {(slice_idx+1):04d}/{total_depth:04d}")
 
     def _update_button_states(self):
         if not self.file_info:
