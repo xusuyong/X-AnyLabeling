@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog
 
 from anylabeling.views.labeling.logger import logger
+from anylabeling.views.labeling.utils.image import get_supported_image_extensions
 from anylabeling.views.labeling.utils.qt import new_icon_path
 from anylabeling.views.labeling.utils.style import (
     get_cancel_btn_style,
@@ -21,7 +22,7 @@ from anylabeling.views.labeling.utils.style import (
 )
 from anylabeling.views.labeling.widgets.popup import Popup
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+IMAGE_EXTENSIONS = set(get_supported_image_extensions())
 
 
 class DatasetSplitDialog(QDialog):
@@ -459,6 +460,20 @@ class DatasetSplitDialog(QDialog):
 
                 img_path = Path(img_path_str)
                 json_path = img_path.with_suffix(".json")
+
+                raw_vol = getattr(self.parent_widget, "raw_volume", None)
+                if raw_vol is not None:
+                    try:
+                        if Path(raw_vol.file_info.file_path).resolve() == img_path.resolve():
+                            loader = getattr(self.parent_widget, "_raw_ortho_loader", None)
+                            if loader is not None:
+                                loader.cancel()
+                            with raw_vol._lock:
+                                raw_vol._closed = True
+                                raw_vol._release_resources_locked()
+                            self.parent_widget.raw_volume = None
+                    except Exception:
+                        pass
 
                 try:
                     shutil.move(
