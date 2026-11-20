@@ -327,6 +327,9 @@ class LabelingWidget(LabelDialog):
             fit_to_content=self._config["fit_to_content"],
             flags=self.label_flags,
         )
+        self.label_dialog.slice_index_changed.connect(
+            self._on_label_dialog_slice_index_changed
+        )
 
         self.label_list = LabelListWidget()
         self.label_list.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
@@ -4761,22 +4764,38 @@ class LabelingWidget(LabelDialog):
         shape = item.shape()
         if shape is None:
             return
-        (
-            text,
-            flags,
-            group_id,
-            description,
-            difficult,
-            kie_linking,
-        ) = self.label_dialog.pop_up(
-            text=shape.label,
-            flags=shape.flags,
-            group_id=shape.group_id,
-            description=shape.description,
-            difficult=shape.difficult,
-            kie_linking=shape.kie_linking,
-            move_mode=self._config.get("move_mode", "auto"),
-        )
+        is_raw_volume = self.raw_volume is not None and self.raw_info is not None
+        cur_slice_idx = None
+        max_slice_idx = None
+        if is_raw_volume:
+            cur_slice_idx = shape.other_data.get("slice_index", self.raw_current_z)
+            try:
+                cur_slice_idx = int(cur_slice_idx)
+            except (TypeError, ValueError):
+                cur_slice_idx = self.raw_current_z
+            max_slice_idx = max(0, self.raw_volume.depth - 1)
+        self._editing_raw_shape = shape if is_raw_volume else None
+        try:
+            (
+                text,
+                flags,
+                group_id,
+                description,
+                difficult,
+                kie_linking,
+            ) = self.label_dialog.pop_up(
+                text=shape.label,
+                flags=shape.flags,
+                group_id=shape.group_id,
+                description=shape.description,
+                difficult=shape.difficult,
+                kie_linking=shape.kie_linking,
+                move_mode=self._config.get("move_mode", "auto"),
+                slice_index=cur_slice_idx,
+                max_slice_index=max_slice_idx,
+            )
+        finally:
+            self._editing_raw_shape = None
         if text is None:
             return
         if not self.validate_label(text):
@@ -4815,18 +4834,43 @@ class LabelingWidget(LabelDialog):
             )
 
         self._update_shape_color(shape)
-        if shape.group_id is None:
-            color = self._get_rgb_by_label(shape.label)
-            item.setText(_format_label_list_text(shape.label, shape.group_id))
-            item.setBackground(QtGui.QColor(*color, LABEL_OPACITY))
-        else:
-            item.setText(_format_label_list_text(shape.label, shape.group_id))
+        item = self.label_list.find_item_by_shape(shape)
+        if item is not None:
+            if shape.group_id is None:
+                color = self._get_rgb_by_label(shape.label)
+                item.setText(_format_label_list_text(shape.label, shape.group_id))
+                item.setBackground(QtGui.QColor(*color, LABEL_OPACITY))
+            else:
+                item.setText(_format_label_list_text(shape.label, shape.group_id))
         self.set_dirty()
         self._refresh_shape_filters()
 
         # update top-right attributes panel
-        selected_idx = self.canvas.shapes.index(selected_shapes[0])
-        self.update_attributes(selected_idx)
+        if shape in self.canvas.shapes:
+            selected_idx = self.canvas.shapes.index(shape)
+            self.update_attributes(selected_idx)
+
+    def _on_label_dialog_slice_index_changed(self, new_slice_idx: int):
+        """Immediately move the editing RAW shape and jump to the target slice."""
+        shape = getattr(self, "_editing_raw_shape", None)
+        if shape is None or self.raw_volume is None or self.raw_info is None:
+            return
+        if new_slice_idx < 0 or new_slice_idx >= self.raw_volume.depth:
+            return
+        if new_slice_idx == self.raw_current_z:
+            return
+        self.remove_labels([shape])
+        shape.other_data["slice_index"] = new_slice_idx
+        phys_z = self.raw_info.get_slice_z_coord(new_slice_idx)
+        if phys_z is not None:
+            shape.other_data["z"] = phys_z
+        self.raw_slice_shapes.setdefault(new_slice_idx, []).append(shape)
+        self.set_dirty()
+        self.on_raw_z_changed(new_slice_idx)
+        self.canvas.select_shapes([shape])
+        new_item = self.label_list.find_item_by_shape(shape)
+        if new_item is not None:
+            self.label_list.select_item(new_item)
 
     def file_search_changed(self):
         search_text = self.file_search.text()

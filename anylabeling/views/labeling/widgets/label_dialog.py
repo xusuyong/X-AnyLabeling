@@ -1264,6 +1264,8 @@ class LabelQLineEdit(QtWidgets.QLineEdit):
 
 
 class LabelDialog(QtWidgets.QDialog):
+    slice_index_changed = QtCore.pyqtSignal(int)
+
     def __init__(
         self,
         text=None,
@@ -1389,6 +1391,23 @@ class LabelDialog(QtWidgets.QDialog):
         layout_linking.addWidget(self.add_linking_button, 2)
         layout.addLayout(layout_linking)
         layout.addWidget(self.linking_list)
+
+        # Slice index row (shown only when editing a RAW volume shape)
+        self.slice_index_row = QtWidgets.QWidget()
+        layout_slice = QtWidgets.QHBoxLayout(self.slice_index_row)
+        layout_slice.setContentsMargins(0, 0, 0, 0)
+        layout_slice.setSpacing(6)
+        self.slice_index_label = QtWidgets.QLabel(self.tr("Slice Index:"))
+        self.edit_slice_index = QtWidgets.QSpinBox()
+        self.edit_slice_index.setFixedHeight(control_height)
+        self.edit_slice_index.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.edit_slice_index.valueChanged.connect(
+            self._on_slice_index_value_changed
+        )
+        layout_slice.addWidget(self.slice_index_label)
+        layout_slice.addWidget(self.edit_slice_index, 1)
+        self.slice_index_row.setVisible(False)
+        layout.addWidget(self.slice_index_row)
 
         # buttons
         self.button_box = bb = QtWidgets.QDialogButtonBox(
@@ -1668,6 +1687,15 @@ class LabelDialog(QtWidgets.QDialog):
             kie_linking.append(item.data(Qt.ItemDataRole.UserRole))
         return kie_linking
 
+    def _on_slice_index_value_changed(self, value: int):
+        if not self.slice_index_row.isHidden():
+            self.slice_index_changed.emit(value)
+
+    def get_slice_index(self):
+        if self.slice_index_row.isVisible():
+            return self.edit_slice_index.value()
+        return None
+
     def pop_up(
         self,
         text=None,
@@ -1678,9 +1706,25 @@ class LabelDialog(QtWidgets.QDialog):
         description=None,
         difficult=False,
         kie_linking=None,
+        slice_index=None,
+        max_slice_index=None,
     ):
         if kie_linking is None:
             kie_linking = []
+        if slice_index is not None:
+            max_idx = (
+                max(0, int(max_slice_index))
+                if max_slice_index is not None
+                else 999999
+            )
+            with QtCore.QSignalBlocker(self.edit_slice_index):
+                self.edit_slice_index.setRange(0, max_idx)
+                self.edit_slice_index.setValue(
+                    max(0, min(max_idx, int(slice_index)))
+                )
+            self.slice_index_row.setVisible(True)
+        else:
+            self.slice_index_row.setVisible(False)
         if self._fit_to_content["row"]:
             self.label_list.setMinimumHeight(
                 self.label_list.sizeHintForRow(0) * self.label_list.count() + 2
